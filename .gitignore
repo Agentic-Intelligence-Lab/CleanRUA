@@ -1,4 +1,6 @@
 # Byte-compiled / optimized / DLL files
+# Experiment outputs contain local images, prompts and native receipts.
+runs/
 __pycache__/
 *.py[codz]
 *$py.class
