@@ -19,7 +19,7 @@ class FakeRoboDojo(gym.Env):
     """Same spaces as RoboDojoEnv; solve_ik remembers the requested pose and step() reaches it.
     Like the real X5, a closed empty gripper measures above 0 (here 0.2)."""
 
-    def __init__(self, ik_fails_after: int | None = None):
+    def __init__(self, ik_fails_after: int | None = None, stuck: bool = False):
         box = lambda shape, low=-np.inf, high=np.inf, dtype=np.float64: gym.spaces.Box(low, high, shape, dtype)
         arm = gym.spaces.Dict({'joints': box((6,)), 'ee_pose': box((7,)), 'gripper': box((), 0, 1),
                                'gripper_command': box((), 0, 1)})
@@ -30,7 +30,7 @@ class FakeRoboDojo(gym.Env):
             'cameras': gym.spaces.Dict({'head': gym.spaces.Dict({
                 'rgb': box((4, 4, 3), 0, 255, np.uint8), 'intrinsic_K': box((3, 3)), 'T_world_from_optical': box((4, 4))})}),
             'native_steps': gym.spaces.Discrete(801)})
-        self.ik_fails_after, self.ik_calls = ik_fails_after, 0
+        self.ik_fails_after, self.ik_calls, self.stuck = ik_fails_after, 0, stuck
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
@@ -56,7 +56,7 @@ class FakeRoboDojo(gym.Env):
         for a in ARMS:
             command = np.array(action['grippers'][a], np.float64)
             self.arms[a].update(joints=action['joints'][a].copy(), gripper=np.clip(command, .2, 1.), gripper_command=command)
-            if a in self.pending:
+            if a in self.pending and not self.stuck:  # A stuck arm never reaches the requested link6 pose.
                 self.arms[a]['ee_pose'] = self.pending.pop(a)
         self.steps += 1
         return self._obs(), 0., False, False, {'success': False}
@@ -90,9 +90,13 @@ class WrapperTest(unittest.TestCase):
         schemas = {t['function']['name']: t['function'] for t in self.env.schemas()}
         self.assertEqual(set(schemas), {'move', 'hold', 'capture_scene', 'finish'})
         move = schemas['move']['parameters']
-        self.assertEqual(move['properties']['arm']['enum'], ['left', 'right'])
-        self.assertEqual(set(move['required']), {'arm', 'pose'})
-        self.assertFalse(move['additionalProperties'])
+        self.assertEqual(move['required'], ['targets'])
+        target = move['properties']['targets']['items']
+        self.assertEqual((target['properties']['arm']['enum'], set(target['required'])), (['left', 'right'], {'arm', 'pose'}))
+        self.assertFalse(move['additionalProperties'] or target['additionalProperties'])
+        self.assertNotIn('$ref', json.dumps(schemas))  # Nested models are inlined for providers without $ref support.
+        self.assertEqual(move['properties']['profile']['enum'], ['standard', 'approach', 'precision'])
+        self.assertEqual(set(schemas['finish']['parameters']['required']), {'status', 'summary'})
         self.assertTrue(all(schema['description'] for schema in schemas.values()))
 
     def test_hold_executes_each_yielded_motion(self):
@@ -101,28 +105,56 @@ class WrapperTest(unittest.TestCase):
         self.assertEqual(obs['native_steps'], 3)
         self.assertFalse(terminated)
 
+    def test_observation_adds_grasp_site_pose(self):
+        obs, _ = self.env.reset()
+        np.testing.assert_allclose(obs['arms']['left']['pose'], [-.3 + .149335, -.000002, .9 - .000854, 0., 0., 0.])
+
     def test_move_stops_once_pose_reached_and_fingers_rest(self):
-        pose = [-.3, 0., .95, 0., 0., 0.]  # 5 cm up: three 2 cm waypoints; fingers rest after the first step.
-        obs, feedback, _ = self.step(call('move', arm='left', pose=pose, gripper=0.))
-        self.assertEqual(feedback, {'tool': 'move', 'ok': True, 'steps': 3, 'reached': True})
+        pose = (self.env.observation['arms']['left']['pose'] + [0., 0., .05, 0., 0., 0.]).tolist()
+        # Precision: 1 cm increments and 5 mm tolerance, so 5 cm takes five steps; fingers rest after the first.
+        obs, feedback, _ = self.step(call('move', targets=[{'arm': 'left', 'pose': pose, 'gripper': 0.}], profile='precision'))
+        self.assertEqual({k: feedback[k] for k in ('ok', 'steps', 'targets_reached', 'stop_reason')},
+                         {'ok': True, 'steps': 5, 'targets_reached': True, 'stop_reason': 'targets_reached'})
+        self.assertEqual(set(feedback['errors']), {'left'})
         left, right = obs['arms']['left'], obs['arms']['right']
-        np.testing.assert_allclose(left['ee_pose'][:3], pose[:3])
+        np.testing.assert_allclose(left['pose'], pose, atol=1e-9)
+        np.testing.assert_allclose(left['ee_pose'][:3], np.array(pose[:3]) - direct.GRASP_SITE, atol=1e-9)  # IK on link6.
         self.assertEqual((left['gripper_command'], left['gripper']), (0., .2))
         self.assertEqual(right['gripper_command'], 1.)  # The other arm holds.
         np.testing.assert_allclose(right['joints'], 0.)
 
+    def test_move_coordinates_both_arms(self):
+        arms = self.env.observation['arms']
+        targets = [{'arm': arm, 'pose': (arms[arm]['pose'] + [0., .02, 0., 0., 0., 0.]).tolist()} for arm in ('left', 'right')]
+        obs, feedback, _ = self.step(call('move', targets=targets, profile='precision'))
+        self.assertEqual((feedback['steps'], feedback['targets_reached'], set(feedback['errors'])), (2, True, {'left', 'right'}))
+        for target in targets:
+            np.testing.assert_allclose(obs['arms'][target['arm']]['pose'], target['pose'], atol=1e-9)
+
+    def test_move_stops_when_progress_stalls(self):
+        env = direct.RoboDojoWrapper(FakeRoboDojo(stuck=True))
+        obs, _ = env.reset()
+        goal = (obs['arms']['left']['pose'] + [0., 0., .1, 0., 0., 0.]).tolist()
+        obs, *_ = env.step(call('move', targets=[{'arm': 'left', 'pose': goal}]))
+        feedback = json.loads(obs['feedback'])
+        self.assertEqual((feedback['ok'], feedback['steps'], feedback['stop_reason']), (True, 4, 'stalled'))
+
     def test_move_reports_ik_failure_after_partial_execution(self):
         env = direct.RoboDojoWrapper(FakeRoboDojo(ik_fails_after=2))
-        env.reset()
-        obs, *_ = env.step(call('move', arm='left', pose=[-.3, 0., 1., 0., 0., 0.]))
+        obs, _ = env.reset()
+        goal = (obs['arms']['left']['pose'] + [0., 0., .1, 0., 0., 0.]).tolist()
+        obs, *_ = env.step(call('move', targets=[{'arm': 'left', 'pose': goal}], profile='precision'))
         feedback = json.loads(obs['feedback'])
-        self.assertEqual((feedback['ok'], feedback['steps'], feedback['reached']), (False, 2, False))
+        self.assertEqual((feedback['ok'], feedback['steps'], feedback['targets_reached']), (False, 2, False))
         self.assertIn('inverse-kinematics', feedback['error'])
 
     def test_invalid_calls_become_feedback_without_motion(self):
+        pose = [0.] * 6
         for action in [call('fly'), {'name': 'hold', 'arguments': '{bad json'}, call('hold', steps=0),
-                       call('hold', speed=1), call('move', arm='middle', pose=[0.] * 6),
-                       call('move', arm='left', pose=[0., 0., 3., 0., 0., 0.])]:
+                       call('hold', speed=1), call('move', targets=[]), call('move', targets=[{'arm': 'middle', 'pose': pose}]),
+                       call('move', targets=[{'arm': 'left', 'pose': pose}, {'arm': 'left', 'pose': pose}]),
+                       call('move', targets=[{'arm': 'left', 'pose': pose}], profile='fast'),
+                       call('finish'), call('finish', status='failure', summary='x'), call('finish', status='success', summary='')]:
             obs, feedback, terminated = self.step(action)
             self.assertFalse(feedback['ok'], action)
             self.assertEqual(feedback['steps'], 0)
@@ -132,7 +164,7 @@ class WrapperTest(unittest.TestCase):
     def test_capture_scene_and_finish_do_not_step_physics(self):
         obs, feedback, terminated = self.step(call('capture_scene'))
         self.assertEqual((feedback['ok'], feedback['steps'], terminated), (True, 0, False))
-        obs, feedback, terminated = self.step(call('finish'))
+        obs, feedback, terminated = self.step(call('finish', status='success', summary='Bowls stacked, arms home.'))
         self.assertEqual((feedback['ok'], obs['native_steps'], terminated), (True, 0, True))
         self.assertTrue(self.env.finished)
 
@@ -166,7 +198,8 @@ class AgentTest(unittest.TestCase):
         self.assertEqual([m['role'] for m in second['messages']], ['system', 'user', 'assistant', 'tool', 'user'])
         self.assertEqual(second['messages'][3], {'role': 'tool', 'tool_call_id': 'call-1', 'content': obs['feedback']})
         observation = json.loads(second['messages'][-1]['content'][0]['text'].removeprefix('Current observation: '))
-        self.assertEqual(observation['arms']['left']['pose'], [-.3, 0., .9, 0., 0., 0.])  # Shown as [xyz, rpy].
+        np.testing.assert_allclose(observation['arms']['left']['pose'],  # Grasp site as [xyz, rpy], rounded.
+                                   np.round([-.3 + .149335, -.000002, .9 - .000854, 0., 0., 0.], 4))
         images = [part for part in second['messages'][-1]['content'] if part['type'] == 'image_url']
         self.assertEqual(len(images), 1)  # Only the current observation carries images.
         self.assertTrue(images[0]['image_url']['url'].startswith('data:image/png;base64,'))

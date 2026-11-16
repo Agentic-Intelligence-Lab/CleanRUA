@@ -1,10 +1,5 @@
 # Direct control on RoboDojo: an LLM drives two ARX X5 arms through four tools.
-#
-# Install RoboDojo and its assets (https://github.com/RoboDojo-Benchmark/RoboDojo#readme) and run
-# with its Python 3.11 interpreter:
-#   export OMNI_KIT_ACCEPT_EULA=YES  # Otherwise Isaac Sim waits for an interactive prompt.
-#   python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --model YOUR_VISION_MODEL
-# Native control check without a model: python tests/smoke_robodojo.py --native-root /path/to/RoboDojo
+# Setup and usage: examples/installation.md
 import base64
 import inspect
 import io
@@ -23,7 +18,7 @@ import httpx
 import numpy as np
 import tyro
 from PIL import Image
-from pydantic import ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field, create_model
 from scipy.spatial.transform import Rotation, Slerp
 from tensorboardX import SummaryWriter
 
@@ -74,6 +69,20 @@ class Args:
     """stop before executing an action once this many seconds have passed since reset"""
 
 
+# Each arm's grasp site in its link6 frame (m): the centre between the distal finger pads, same orientation.
+# From uni-robot-agent's x5_grasp_site.urdf. Local +X points toward the fingertips; fingers close along +/-Y.
+GRASP_SITE = np.array([.149335, -.000002, -.000854])
+
+
+class Target(BaseModel):
+    """One arm's goal for `move`."""
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
+    arm: Literal['left', 'right']
+    pose: Annotated[list[float], Field(min_length=6, max_length=6, description=(
+        'Absolute world grasp-site [x,y,z,roll,pitch,yaw]; metres and fixed-axis XYZ radians, R=Rz(yaw)@Ry(pitch)@Rx(roll).'))]
+    gripper: Annotated[float, Field(ge=0, le=1, description='Normalized opening: 0=closed, 1=open.')] = None
+
+
 def Tool(method):
     """Expose a wrapper method to the model: its signature becomes the argument schema, its docstring the description."""
     hints = get_type_hints(method, include_extras=True)
@@ -99,16 +108,25 @@ class RoboDojoWrapper(gym.Wrapper):
                       if hasattr(method, 'arguments')}
         text = gym.spaces.Text(2**16, min_length=0, charset=string.printable)
         self.action_space = gym.spaces.Dict({'name': gym.spaces.Text(64, min_length=0), 'arguments': text})
-        self.observation_space = gym.spaces.Dict({**env.observation_space.spaces, 'feedback': text})
+        arms, pose = env.observation_space['arms'], gym.spaces.Box(-np.inf, np.inf, (6,), np.float64)
+        self.observation_space = gym.spaces.Dict({**env.observation_space.spaces, 'feedback': text, 'arms': gym.spaces.Dict(
+            {name: gym.spaces.Dict({**arm.spaces, 'pose': pose}) for name, arm in arms.spaces.items()})})
 
     def schemas(self) -> list[dict]:
         """Tool definitions in the OpenAI function-calling format."""
-        return [{'type': 'function', 'function': {'name': name, 'description': inspect.getdoc(method),
-                                                  'parameters': method.arguments.model_json_schema()}}
-                for name, method in self.tools.items()]
+        tools = []
+        for name, method in self.tools.items():
+            schema = method.arguments.model_json_schema()
+            definitions = schema.pop('$defs', {})  # Inline nested models: not every provider resolves `$ref`.
+            schema = json.loads(json.dumps(schema), object_hook=lambda node: definitions.get(
+                node.get('$ref', '').split('/')[-1], node))
+            tools.append({'type': 'function', 'function': {
+                'name': name, 'description': inspect.getdoc(method), 'parameters': schema}})
+        return tools
 
     def reset(self, *, seed=None, options=None):
-        self.observation, info = self.env.reset(seed=seed, options=options)
+        observation, info = self.env.reset(seed=seed, options=options)
+        self.observation = self._with_poses(observation)
         self.finished = False
         return {**self.observation, 'feedback': ''}, info
 
@@ -125,7 +143,8 @@ class RoboDojoWrapper(gym.Wrapper):
         reward, terminated, truncated, info = 0., False, False, {}
         try:
             for motion in self.parse_action(action)() or ():
-                self.observation, r, terminated, truncated, info = self.env.step(motion)
+                observation, r, terminated, truncated, info = self.env.step(motion)
+                self.observation = self._with_poses(observation)
                 reward += r
                 self.feedback['steps'] += 1
                 if terminated or truncated:
@@ -136,53 +155,92 @@ class RoboDojoWrapper(gym.Wrapper):
         return ({**self.observation, 'feedback': json.dumps(self.feedback)},
                 reward, terminated, truncated, info)
 
+    def _with_poses(self, observation: dict) -> dict:
+        """Add each arm's grasp-site `pose` [x, y, z, roll, pitch, yaw], the frame that `move` controls."""
+        arms = {}
+        for name, arm in observation['arms'].items():
+            rotation = Rotation.from_quat(arm['ee_pose'][3:], scalar_first=True)
+            arms[name] = {**arm, 'pose': np.r_[arm['ee_pose'][:3] + rotation.apply(GRASP_SITE), rotation.as_euler('xyz')]}
+        return {**observation, 'arms': arms}
+
     def _hold(self) -> dict:
         arms = self.observation['arms']
         return {'joints': {name: arm['joints'] for name, arm in arms.items()},
                 'grippers': {name: arm['gripper_command'] for name, arm in arms.items()}}
 
     @Tool
-    def move(self, arm: Literal['left', 'right'],
-             pose: Annotated[list[float], Field(min_length=6, max_length=6)],
-             gripper: Annotated[float, Field(ge=0, le=1)] = None,
-             steps: Annotated[int, Field(ge=1, le=24)] = 24):
-        """Move ONE arm's link6 to an absolute pose [x, y, z, roll, pitch, yaw] (metres, fixed-axis XYZ radians)
-        in the environment-local world frame. This is the link6 flange, not the fingertips.
-        `gripper` sets the opening (0 closed, 1 open); omit it to keep the current command.
-        The other arm holds still. Each control step moves at most 2 cm and 0.2 rad along the way;
-        the call stops after `steps` control steps, or once the pose is reached and the fingers stopped
-        moving (`reached`). Fingers stopping early can mean they closed on an object.
-        Reaching a pose does not prove a grasp or a collision-free path."""
-        goal_position, goal_rotation = np.array(pose[:3]), Rotation.from_euler('xyz', pose[3:])
-        low, high = [-.65, -.65, .70], [.65, .35, 1.50]  # Coarse guard on link6 targets, not collision checking.
-        if np.any(goal_position < low) or np.any(goal_position > high):
-            raise ValueError(f'Target position outside the workspace {low}..{high}')
-        self.feedback['reached'] = False
-        for _ in range(steps):
-            state = self.observation['arms'][arm]
-            position, rotation = state['ee_pose'][:3], Rotation.from_quat(state['ee_pose'][3:], scalar_first=True)
-            # Next waypoint: at most 2 cm and 0.2 rad closer to the goal.
-            offset, angle = goal_position - position, (rotation.inv() * goal_rotation).magnitude()
-            position = position + offset * min(1., .02 / max(np.linalg.norm(offset), 1e-9))
-            rotation = Slerp([0., 1.], Rotation.concatenate([rotation, goal_rotation]))(min(1., .2 / max(angle, 1e-9)))
-            joints = self.unwrapped.solve_ik(arm, position, rotation.as_quat(scalar_first=True))
-            if joints is None or np.abs(joints - state['joints']).max() > 1.:
-                raise ValueError('No inverse-kinematics solution without a joint jump over 1 rad for the next waypoint')
-            motion = self._hold()
-            motion['joints'][arm] = joints
-            if gripper is not None:
-                motion['grippers'][arm] = np.array(gripper)
+    def move(self, targets: Annotated[list[Target], Field(min_length=1, max_length=2)],
+             profile: Literal['standard', 'approach', 'precision'] = 'standard',
+             max_steps: Annotated[int, Field(ge=1, le=24)] = 24,
+             position_tolerance_m: Annotated[float, Field(ge=.001, le=.1)] = None,
+             orientation_tolerance_rad: Annotated[float, Field(ge=.02, le=.5)] = None):
+        """Move coordinated arms to absolute world grasp-site poses [x,y,z,roll,pitch,yaw], in metres and fixed-axis
+        XYZ radians (R=Rz(yaw)@Ry(pitch)@Rx(roll)). All six values are required; both position and orientation are
+        checked against the goal and its tolerances. Copy the measured orientation to translate without reorienting,
+        or the measured position to rotate in place. Omitted gripper preserves the previous command; a supplied
+        opening (0 closed, 1 open) applies during motion, not after arrival.
+        Profiles: standard: 0.04m increments/0.03m position/0.1rad orientation tolerance; approach: 0.04m/0.02m/0.05rad;
+        precision: 0.01m/0.005m/0.05rad. Rotation consumes displacement budget. Position and orientation interpolate
+        together; one goal does not express 'move then rotate'. Use separate calls for ordered stages such as
+        close-then-lift, and inspect feedback before dependent actions. Unlisted arms hold.
+        The call stops once every pose is within tolerance and requested fingers stopped moving (targets_reached),
+        when an arm stops making progress (stalled), or after max_steps control steps; read stop_reason and the
+        per-arm [position, orientation] errors. Fingers stopping early can mean they closed on an object. These are
+        target bounds, not collision guarantees; pose arrival is not object contact."""
+        step_m, position_tolerance, orientation_tolerance = {
+            'standard': (.04, .03, .1), 'approach': (.04, .02, .05), 'precision': (.01, .005, .05)}[profile]
+        position_tolerance = position_tolerance_m or position_tolerance
+        orientation_tolerance = orientation_tolerance_rad or orientation_tolerance
+        if len({target.arm for target in targets}) != len(targets):
+            raise ValueError('Each arm may appear in only one target')
+        goals = {target.arm: (np.array(target.pose[:3]), Rotation.from_euler('xyz', target.pose[3:])) for target in targets}
+        # Rotating link6 also moves the grasp site, so rotation and translation share each step's displacement.
+        radius = np.linalg.norm(GRASP_SITE)
+        max_angle = min(.6, 2 * np.arcsin(min(1., step_m / (4 * radius))))
+        errors = []
+        self.feedback.update(targets_reached=False, stop_reason='max_steps')
+        for _ in range(max_steps):
+            before, motion = self.observation['arms'], self._hold()
+            for target in targets:
+                state, (goal_position, goal_rotation) = before[target.arm], goals[target.arm]
+                position, rotation = state['pose'][:3], Rotation.from_euler('xyz', state['pose'][3:])
+                angle, offset = (rotation.inv() * goal_rotation).magnitude(), goal_position - position
+                rotation = Slerp([0., 1.], Rotation.concatenate([rotation, goal_rotation]))(min(1., max_angle / max(angle, 1e-9)))
+                budget = max(0., step_m - 2 * radius * np.sin(min(angle, max_angle) / 2))
+                position = position + offset * min(1., budget / max(np.linalg.norm(offset), 1e-9))
+                # IK targets link6, which sits GRASP_SITE behind the grasp site.
+                joints = self.unwrapped.solve_ik(target.arm, position - rotation.apply(GRASP_SITE),
+                                                 rotation.as_quat(scalar_first=True))
+                if joints is None or np.abs(joints - state['joints']).max() > 1.:
+                    raise ValueError(f'No {target.arm} inverse-kinematics solution without a joint jump over 1 rad '
+                                     'for the next waypoint')
+                motion['joints'][target.arm] = joints
+                if target.gripper is not None:
+                    motion['grippers'][target.arm] = np.array(target.gripper)
             yield motion  # step() executes this and updates self.observation before we continue.
-            new = self.observation['arms'][arm]
-            error = Rotation.from_quat(new['ee_pose'][3:], scalar_first=True).inv() * goal_rotation
-            if (np.linalg.norm(new['ee_pose'][:3] - goal_position) <= .005 and error.magnitude() <= .05
-                    and abs(new['gripper'] - state['gripper']) <= .01):
-                self.feedback['reached'] = True
+            arms = self.observation['arms']
+            errors.append({arm: (float(np.linalg.norm(arms[arm]['pose'][:3] - goal_position)),
+                                 float((Rotation.from_euler('xyz', arms[arm]['pose'][3:]).inv() * goal_rotation).magnitude()))
+                           for arm, (goal_position, goal_rotation) in goals.items()})
+            self.feedback['errors'] = {arm: [round(p, 4), round(o, 4)] for arm, (p, o) in errors[-1].items()}
+            reached = {arm: p <= position_tolerance and o <= orientation_tolerance for arm, (p, o) in errors[-1].items()}
+            if all(reached.values()) and all(abs(arms[target.arm]['gripper'] - before[target.arm]['gripper']) <= .01
+                                             for target in targets if target.gripper is not None):
+                self.feedback.update(targets_reached=True, stop_reason='targets_reached')
+                return
+            # Stalled: over the last three steps, an unreached arm improved by less than a tenth of each tolerance.
+            if len(errors) >= 4 and any(
+                    not reached[arm]
+                    and errors[-4][arm][0] - min(e[arm][0] for e in errors[-3:]) <= .1 * position_tolerance
+                    and errors[-4][arm][1] - min(e[arm][1] for e in errors[-3:]) <= .1 * orientation_tolerance
+                    for arm in goals):
+                self.feedback['stop_reason'] = 'stalled'
                 return
 
     @Tool
-    def hold(self, steps: Annotated[int, Field(ge=1, le=24)] = 1):
-        """Keep both arms and grippers at their current commands while physics advances `steps` control steps."""
+    def hold(self, steps: Annotated[int, Field(ge=1, le=40)] = 1):
+        """Advance physics holding measured arm joints and existing gripper commands for `steps` control steps.
+        Native termination stops early. Inspect the returned images and state; this consumes action steps."""
         for _ in range(steps):
             yield self._hold()
 
@@ -191,15 +249,18 @@ class RoboDojoWrapper(gym.Wrapper):
         """Look again: return the current camera images and state without advancing physics."""
 
     @Tool
-    def finish(self):
-        """End the episode once the task is visibly complete. The official evaluation still decides success."""
+    def finish(self, status: Literal['success'], summary: Annotated[str, Field(min_length=1)]):
+        """Submit completion only when every task requirement is verified by current observations.
+        Summarize the evidence. Submission does not override the environment's official outcome."""
         self.finished = True
 
 
 SYSTEM_PROMPT = """\
 You control a dual-arm ARX X5 robot in simulation. Reply with exactly one tool call each turn.
-Positions are metres in the environment-local world frame. Arm poses are [x, y, z, roll, pitch, yaw] of the \
-link6 flange (not the fingertips) with fixed-axis XYZ Euler angles in radians; never guess a fingertip offset.
+Positions are metres in the environment-local world frame. Arm poses are [x, y, z, roll, pitch, yaw] of each \
+arm's grasp site with fixed-axis XYZ Euler angles in radians. The grasp site is the nominal centre between the two \
+distal inner finger pads, fixed to link6; it is not the fingertip or an object contact estimate. Its local +X points \
+toward the fingertips, the fingers close along +/-Y, and +Z completes the right-handed frame.
 Grippers use a normalized opening: 0 closed, 1 open. `gripper` is measured, `gripper_command` is the last command.
 Each control step advances 10 physics ticks at 250 Hz. Every tool result comes with fresh images and state.
 Use the images and measured state; do not invent object coordinates. Move in small stages and check the \
@@ -225,9 +286,7 @@ class RUAgent:
         if self.pending is not None:  # Pair the previous tool call with its result.
             self.history.append((self.pending, {'role': 'tool', 'tool_call_id': self.pending['tool_calls'][0]['id'],
                                                 'content': observation['feedback']}))
-        # The model sees link6 poses as [x, y, z, roll, pitch, yaw], matching the `move` tool.
-        arms = {name: {'pose': [*arm['ee_pose'][:3], *Rotation.from_quat(arm['ee_pose'][3:], scalar_first=True).as_euler('xyz')],
-                       **{key: arm[key] for key in ('joints', 'gripper', 'gripper_command')}}
+        arms = {name: {key: arm[key] for key in ('pose', 'joints', 'gripper', 'gripper_command')}
                 for name, arm in observation['arms'].items()}
         cameras = {name: {key: value for key, value in camera.items() if key != 'rgb'}
                    for name, camera in observation['cameras'].items()}
@@ -282,9 +341,8 @@ if __name__ == '__main__':
     try:
         # The native success check also requires both arms back at their start poses.
         observation, info = env.reset(seed=args.seed)
-        home = {name: np.round([*arm['ee_pose'][:3], *Rotation.from_quat(arm['ee_pose'][3:], scalar_first=True)
-                                .as_euler('xyz')], 4).tolist() for name, arm in observation['arms'].items()}
-        task = f'Task: {info["instruction"]} Afterwards, return both arms to their initial link6 poses {json.dumps(home)}.'
+        home = {name: np.round(arm['pose'], 4).tolist() for name, arm in observation['arms'].items()}
+        task = f'Task: {info["instruction"]} Afterwards, return both arms to their initial poses {json.dumps(home)}.'
         agent.reset(task)
         log('reset', task=task, info=info, args=asdict(args))
         start_time, stop_reason, total_reward = time.time(), 'max_decisions', 0.

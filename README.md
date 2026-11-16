@@ -5,21 +5,17 @@ Inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl), each file keeps an ag
 prompt, tools and interaction loop together, on top of a plain Gymnasium environment.
 
 ---
+### News
+- **[2026/11/16]** 🔥 Hybrid control is available: a vision-language model delegates local phases to Pi0.5 in [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py).
+- **[2026/11/16]** 🔥 Direct control is available: a vision-language model drives the robot through motion tools in [direct_robodojo.py](cleanrua/direct_robodojo.py).
+
 ### Quick start
 
-Prepare the environment named in an agent's file header, then from this directory:
+Follow the [installation guide](examples/installation.md), then run an agent:
 
 ```sh
-pip install 'gymnasium>=1.2,<2' 'httpx>=0.28,<1' 'pydantic>=2.11,<3' 'tyro>=0.9,<1' \
-  'scipy>=1.14' 'tensorboardX>=2.6' tensorboard moviepy
-
-export CLEANRUA_BASE_URL=https://YOUR_PROVIDER/v1 CLEANRUA_API_KEY=...
-python -m cleanrua.direct_robodojo --help
-tensorboard --logdir runs
+python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --model YOUR_VISION_MODEL
 ```
-
-Each run saves TensorBoard scalars, a JSONL trajectory, the images shown to the model,
-videos and the official result under `runs/`.
 
 | Agent | Idea |
 |---|---|
@@ -31,19 +27,14 @@ videos and the official result under `runs/`.
 > 2. Environments are plain `gym.Env`s without tools or models; agents add them with a `gym.Wrapper`.
 > 3. A finished tool call is not task success; results report the environment's own verdict.
 
-### Tests
-
-```sh
-python -m unittest discover -s tests -q    # CPU only, no simulator or model
-```
-
 ### Acknowledgements
 
-CleanRUA is inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl) and
-[RoboSimStudio](https://github.com/robosimstudio/robosimstudio), and follows the tool design of
-[uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent). Environments and action models come from
+CleanRUA is inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl),
+[RoboSimStudio](https://github.com/robosimstudio/robosimstudio) and
+[uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent), and uses
 [RoboDojo](https://github.com/RoboDojo-Benchmark/RoboDojo) and
-[XPolicyLab](https://github.com/XPolicyLab/XPolicyLab). Thanks to their authors.
+[XPolicyLab](https://github.com/XPolicyLab/XPolicyLab) for simulation and action models.
+Thanks to their authors.
 
 ### License
 
