@@ -1,4 +1,4 @@
-# CleanRUA
+# <img alt="" src="docs/logo.jpg" height="44" align="top" /> CleanRUA
 
 [Agent implementation](direct_robodojo.py) | [RoboDojo wrapper](cleanrua_utils/robodojo_wrappers.py)
 
