@@ -1,56 +1,49 @@
 # <img alt="" src="docs/logo.jpg" height="44" align="top" /> CleanRUA
 
-[Agent implementation](direct_robodojo.py) | [RoboDojo wrapper](cleanrua_utils/robodojo_wrappers.py)
-
-CleanRUA is a clean, readable implementation of robot-use agents for research
-and experimentation. Vision-language models observe a scene, call robot tools,
-and use execution feedback to choose the next action.
-
-Inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl), each agent implementation
-keeps its prompts, tools, and interaction loop together, with small wrappers for
-the underlying simulation environment.
+CleanRUA provides clean, single-file implementations of robot-use agents for research.
+Inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl), each file keeps an agent's
+prompt, tools and interaction loop together, on top of a plain Gymnasium environment.
 
 ---
 ### Quick start
 
-Start with [Direct control on RoboDojo](direct_robodojo.py). Follow the
-[official RoboDojo installation guide](https://github.com/RoboDojo-Benchmark/RoboDojo#readme)
-to prepare its Python 3.11 environment and assets, then use that same interpreter
-from the CleanRUA directory:
+Prepare the environment named in an agent's file header, then from this directory:
 
 ```sh
-python -m pip install 'httpx>=0.28,<1' 'jsonschema>=4.23,<5' 'scipy>=1.14'
+pip install 'gymnasium>=1.2,<2' 'httpx>=0.28,<1' 'pydantic>=2.11,<3' 'tyro>=0.9,<1' \
+  'scipy>=1.14' 'tensorboardX>=2.6' tensorboard moviepy
 
-# Check native capture and motion without a model.
-python direct_robodojo.py --native-root /path/to/RoboDojo --smoke-test --output-dir ./runs
-
-# Set CLEANRUA_API_KEY in your shell before running an agent.
-python direct_robodojo.py --native-root /path/to/RoboDojo \
-  --base-url https://YOUR_PROVIDER/v1 --model YOUR_VISION_MODEL --output-dir ./runs
+export CLEANRUA_BASE_URL=https://YOUR_PROVIDER/v1 CLEANRUA_API_KEY=...
+python -m cleanrua.direct_robodojo --help
+tensorboard --logdir runs
 ```
 
-Use a Chat Completions-compatible vision model with tool calling and token usage
-reporting. For Alibaba Cloud's compatible API, add `--provider aliyun`.
-Trajectories, images, videos, and results are saved beneath the launch directory's
-`runs/`; use `--output-dir` to choose another location.
+Each run saves TensorBoard scalars, a JSONL trajectory, the images shown to the model,
+videos and the official result under `runs/`.
+
+| Agent | Idea |
+|---|---|
+| [direct_robodojo.py](cleanrua/direct_robodojo.py) | A vision-language model controls the robot through motion tools. |
+| [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py) | The model also delegates local phases to a vision-language-action model. |
 
 > [!TIP]
-> Start with `--smoke-test`, then inspect the prompts and main loop to try your
-> own agent ideas. Rotation conversions and interpolation use SciPy, not custom
-> quaternion formulas. No OpenRUA environment service is required.
+> 1. To try your own idea, add a `@Tool` method to an agent's wrapper or change its `RUAgent`.
+> 2. Environments are plain `gym.Env`s without tools or models; agents add them with a `gym.Wrapper`.
+> 3. A finished tool call is not task success; results report the environment's own verdict.
 
-> [!NOTE]
-> The current native baseline supports `stack_bowls`, dual ARX X5, and seed 0.
-> Actions target **link6** poses; `gripper` ranges from 0 (closed) to 1 (open).
-> Simulation only. A passing smoke test is not evidence of task success.
+### Tests
+
+```sh
+python -m unittest discover -s tests -q    # CPU only, no simulator or model
+```
 
 ### Acknowledgements
 
 CleanRUA is inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl) and
-[RoboSimStudio](https://github.com/robosimstudio/robosimstudio), and uses
-[RoboDojo](https://github.com/RoboDojo-Benchmark/RoboDojo) for simulation.
-Thanks to their authors and contributors. Upstream code and assets retain their
-respective licenses.
+[RoboSimStudio](https://github.com/robosimstudio/robosimstudio), and follows the tool design of
+[uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent). Environments and action models come from
+[RoboDojo](https://github.com/RoboDojo-Benchmark/RoboDojo) and
+[XPolicyLab](https://github.com/XPolicyLab/XPolicyLab). Thanks to their authors.
 
 ### License
 
