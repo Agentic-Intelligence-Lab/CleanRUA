@@ -38,7 +38,7 @@ Tips:
   title        = {CleanRUA: Clean Implementations of Robot-Use Agents},
   author       = {Mingqi Yuan, Xudong Wu, Jiayu Chen},
   year         = {2026},
-  howpublished = {\url{https://github.com/friedrichyuan/CleanRUA}},
+  howpublished = {\url{https://github.com/Agentic-Intelligence-Lab/CleanRUA}},
 }
 ```
 
