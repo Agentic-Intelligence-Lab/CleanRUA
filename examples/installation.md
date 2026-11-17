@@ -48,12 +48,19 @@ hf download RoboDojo-Benchmark/RoboDojo --repo-type dataset \
   --include "ckpt/RoboDojo/Pi_05/RoboDojo-sim-arx_x5-joint-0/59999/params/*" \
             "ckpt/RoboDojo/Pi_05/RoboDojo-sim-arx_x5-joint-0/59999/assets/*" \
             "ckpt/RoboDojo/Pi_05/RoboDojo-sim-arx_x5-joint-0/59999/_CHECKPOINT_METADATA"
-mkdir -p checkpoints
-mv /tmp/robodojo-hf/ckpt/RoboDojo/Pi_05/RoboDojo-sim-arx_x5-joint-0 checkpoints/
+CKPT=/tmp/robodojo-hf/ckpt/RoboDojo/Pi_05/RoboDojo-sim-arx_x5-joint-0   # Or wherever you keep it.
 
-# Arguments: bench task checkpoint robot action seed GPU env port host.
-bash setup_eval_policy_server.sh RoboDojo stack_bowls sim arx_x5 joint 0 0 uv 6000 localhost
+# Allocate GPU memory on demand: Pi0.5 uses about 8.5 GB, so Isaac Sim fits on the same 16 GB GPU.
+source openpi/.venv/bin/activate
+XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 CUDA_VISIBLE_DEVICES=0 \
+PYTHONPATH=/path/to/RoboDojo:$PWD/openpi/src python ../../setup_policy_server.py --config_path deploy.yml \
+  --overrides port=6000 host=localhost bench_name=RoboDojo task_name=stack_bowls ckpt_name=$CKPT \
+  env_cfg_type=arx_x5 seed=0 policy_name=Pi_05 action_type=joint action_dim=14
 ```
+
+The server is ready when it listens on port 6000, after about 15 seconds; the first prediction
+compiles the model and takes about 10 seconds. XPolicyLab's `setup_eval_policy_server.sh` fixes
+`XLA_PYTHON_CLIENT_MEM_FRACTION=0.3`, which fits only on GPUs with at least 32 GB.
 
 Keep the server running. In another terminal, from the CleanRUA directory:
 
