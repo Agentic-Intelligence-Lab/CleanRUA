@@ -1,4 +1,4 @@
-# <img alt="" src="docs/logo.jpg" height="44" align="top" /> CleanRUA
+# <img alt="" src="docs/logo.jpg" height="50" align="top" /> CleanRUA
 
 CleanRUA provides clean, single-file implementations of robot-use agents for research.
 Inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl), each file keeps an agent's
@@ -6,7 +6,7 @@ prompt, tools and interaction loop together, on top of a plain Gymnasium environ
 
 ---
 ### News
-- **[2026/11/16]** 🔥 Hybrid control is available: a vision-language model delegates local phases to Pi0.5 in [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py).
+- **[2026/11/17]** 🔥 Hybrid control is available: a vision-language model delegates local phases to Pi0.5 in [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py).
 - **[2026/11/16]** 🔥 Direct control is available: a vision-language model drives the robot through motion tools in [direct_robodojo.py](cleanrua/direct_robodojo.py).
 
 ### Quick start
