@@ -1,4 +1,4 @@
-# <img alt="" src="docs/logo.jpg" height="50" align="top" /> CleanRUA
+# CleanRUA (Clean Implementation of Robot-Use Agents)
 
 CleanRUA provides clean, single-file implementations of robot-use agents for research.
 Inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl), each file keeps an agent's
