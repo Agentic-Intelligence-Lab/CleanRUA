@@ -61,9 +61,6 @@ class FakeRoboDojo(gym.Env):
         self.steps += 1
         return self._obs(), 0., False, False, {'success': False}
 
-    def forward_kinematics(self, arm, joints):  # Link6 rises 1 cm per radian of the first joint.
-        return self.arms[arm]['ee_pose'] + [0., 0., .01 * (joints[0] - self.arms[arm]['joints'][0]), 0., 0., 0., 0.]
-
     def native_observation(self):
         return {'state': {f'{a}_arm_joint_state': self.arms[a]['joints'].tolist() for a in ARMS}, 'instruction': 'native'}
 

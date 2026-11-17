@@ -71,8 +71,7 @@ Keep the server running. In another terminal, from the CleanRUA directory:
 python -m cleanrua.hybrid_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 ```
 
-By default the same vision model also reviews each Pi0.5 chunk before it runs; `--no-review` runs
-the chunks unreviewed. `--policy-url` selects another server address (default `ws://localhost:6000`).
+`--policy-url` selects another server address (default `ws://localhost:6000`).
 
 ## 5. Tests
 
@@ -82,5 +81,4 @@ python tests/smoke_robodojo.py --native-root /path/to/RoboDojo     # GPU: native
 ```
 
 The GPU test scripts capture, hold, a 1 cm lift, gripper close/open, return and finish through the
-agents' wrapper, and compares forward kinematics with the measured pose. It checks control, not
-task success.
+agents' wrapper. It checks control, not task success.

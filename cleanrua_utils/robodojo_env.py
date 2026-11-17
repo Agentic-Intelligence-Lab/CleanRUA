@@ -16,7 +16,6 @@ y down, z forward. Reward is 1 on task success.
 import atexit
 import sys
 import tempfile
-import xml.etree.ElementTree as ElementTree
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -60,7 +59,6 @@ class RoboDojoEnv(gym.Env):
         seeds = self.sim.seed_manager
         layout = layout or seeds.seed_info[seeds.seed_list[0]]['scene_layout']  # Official layout of seed 0.
         seeds.seed_info, self._started = {0: {'scene_layout': str(layout)}}, False
-        self._chains = {arm: self._urdf_chain(arm) for arm in ARMS}
 
         observation, _ = self.reset()  # Robots and cameras exist only once a scene is loaded.
         box = lambda shape, low=-np.inf, high=np.inf, dtype=np.float64: spaces.Box(low, high, shape, dtype)
@@ -106,20 +104,6 @@ class RoboDojoEnv(gym.Env):
         result = self.sim.robot_manager.solve_ik([*position, *quaternion], 0, robot, trans='world')
         return np.asarray(result['joint_value'], np.float64) if result['status'] == 'Success' else None
 
-    def forward_kinematics(self, arm: str, joints) -> np.ndarray:
-        """Robot-only kinematics: `arm`'s link6 pose [x, y, z, qw, qx, qy, qz] for joint positions."""
-        robot = self.sim.robot_manager.get_robot_by_arm_name(f'{arm}_arm')
-        base = self.sim.robot_manager.get_link_pose(robot, robot.base_link, is_relative=True)[0]
-        pose = np.eye(4)
-        pose[:3, :3], pose[:3, 3] = Rotation.from_quat(base[3:], scalar_first=True).as_matrix(), base[:3]
-        values = dict(zip(robot.arm_joints_name, joints))
-        for name, origin, axis in self._chains[arm]:
-            motion = np.eye(4)
-            if axis is not None:
-                motion[:3, :3] = Rotation.from_rotvec(axis * values[name]).as_matrix()
-            pose = pose @ origin @ motion
-        return np.r_[pose[:3, 3], Rotation.from_matrix(pose[:3, :3]).as_quat(scalar_first=True)]
-
     def native_observation(self) -> dict:
         """The latest observation in RoboDojo's own format, as consumed by policies trained on RoboDojo data."""
         return self._native
@@ -142,21 +126,6 @@ class RoboDojoEnv(gym.Env):
             self.sim.close()
             self._videos.cleanup()
             self._started = False
-
-    def _urdf_chain(self, arm: str) -> list:
-        """Joints from base_link to link6 in the robot's URDF: (name, origin transform, axis or None if fixed)."""
-        robot = self.sim.robot_manager.get_robot_by_arm_name(f'{arm}_arm')
-        joints = {joint.find('child').get('link'): joint for joint in ElementTree.parse(robot.urdf_path).iter('joint')}
-        chain, link = [], robot.ee_link_name
-        while link != robot.base_link:
-            joint, origin = joints[link], np.eye(4)
-            element = joint.find('origin') if joint.find('origin') is not None else ElementTree.Element('origin')
-            origin[:3, :3] = Rotation.from_euler('xyz', np.fromstring(element.get('rpy', '0 0 0'), sep=' ')).as_matrix()
-            origin[:3, 3] = np.fromstring(element.get('xyz', '0 0 0'), sep=' ')
-            axis = None if joint.get('type') == 'fixed' else np.fromstring(joint.find('axis').get('xyz'), sep=' ')
-            chain.insert(0, (joint.get('name'), origin, axis))
-            link = joint.find('parent').get('link')
-        return chain
 
     def _observe(self) -> dict:
         self.sim.obs_manager.render_for_capture()
