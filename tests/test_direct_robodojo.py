@@ -61,6 +61,9 @@ class FakeRoboDojo(gym.Env):
         self.steps += 1
         return self._obs(), 0., False, False, {'success': False}
 
+    def forward_kinematics(self, arm, joints):  # Link6 rises 1 cm per radian of the first joint.
+        return self.arms[arm]['ee_pose'] + [0., 0., .01 * (joints[0] - self.arms[arm]['joints'][0]), 0., 0., 0., 0.]
+
     def native_observation(self):
         return {'state': {f'{a}_arm_joint_state': self.arms[a]['joints'].tolist() for a in ARMS}, 'instruction': 'native'}
 
@@ -180,9 +183,10 @@ class AgentTest(unittest.TestCase):
                 'role': 'assistant', 'content': 'look', 'tool_calls': [{'id': f'call-{n}', 'type': 'function',
                     'function': {'name': 'capture_scene', 'arguments': '{}'}}]}}]})
 
-        variables = {'CLEANRUA_API_KEY': 'test-key', 'CLEANRUA_BASE_URL': 'https://model.invalid/v1'}
+        variables = {'CLEANRUA_API_KEY': 'test-key', 'CLEANRUA_BASE_URL': 'https://model.invalid/v1',
+                     'CLEANRUA_MODEL_NAME': 'test-model'}
         with mock.patch.dict(os.environ, variables):
-            agent = direct.RUAgent(direct.Args(model='test-model'), tools=[])
+            agent = direct.RUAgent(direct.Args(), tools=[])
         agent.client = httpx.Client(base_url=agent.client.base_url, transport=httpx.MockTransport(handler))
         env = direct.RoboDojoWrapper(FakeRoboDojo())
         obs, _ = env.reset()

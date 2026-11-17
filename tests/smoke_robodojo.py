@@ -3,12 +3,16 @@
     python tests/smoke_robodojo.py --native-root /path/to/RoboDojo
 
 Scripted calls through the same wrapper the agent uses: capture, hold, lift 1 cm,
-close and open the gripper, return home, finish. This checks control, not bowl stacking.
+close and open the gripper, return home, finish. After each call, forward kinematics must
+match the measured link6 pose. This checks control, not task success.
 """
 import argparse
 import json
 import sys
 from pathlib import Path
+
+import numpy as np
+from scipy.spatial.transform import Rotation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cleanrua.direct_robodojo import RoboDojoWrapper  # noqa: E402
@@ -22,8 +26,9 @@ def call(name, **arguments):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--native-root', type=Path, required=True)
-    native_root = parser.parse_args().native_root
-    env = RoboDojoWrapper(RoboDojoEnv(native_root))
+    parser.add_argument('--task', default='stack_bowls')
+    cli = parser.parse_args()
+    env = RoboDojoWrapper(RoboDojoEnv(cli.native_root, cli.task))
     try:
         observation, info = env.reset(seed=0)
         assert env.observation_space.contains(observation), 'reset observation outside observation_space'
@@ -49,8 +54,13 @@ if __name__ == '__main__':
             assert observation['native_steps'] - before == feedback['steps'], 'step count mismatch'
             assert steps is None or feedback['steps'] == steps, feedback
             assert feedback.get('targets_reached') == reached, feedback
+            for arm, state in observation['arms'].items():
+                predicted = env.unwrapped.forward_kinematics(arm, state['joints'])
+                angle = (Rotation.from_quat(predicted[3:], scalar_first=True).inv()
+                         * Rotation.from_quat(state['ee_pose'][3:], scalar_first=True)).magnitude()
+                assert np.linalg.norm(predicted[:3] - state['ee_pose'][:3]) < .002 and angle < .01, (arm, predicted, state)
             assert terminated == (action['name'] == 'finish') and not truncated, (terminated, truncated)
         print('verdict', env.unwrapped.evaluate())
-        print('PASS: capture, hold, lift, gripper close/open, return, finish', flush=True)
+        print('PASS: capture, hold, lift, gripper close/open, return, finish, forward kinematics', flush=True)
     finally:
         env.close()

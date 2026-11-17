@@ -39,15 +39,17 @@ class Args:
     # Environment
     native_root: Path = Path('RoboDojo')
     """path to the RoboDojo checkout, including its Assets"""
+    task: str = 'stack_bowls'
+    """RoboDojo task name, as in RoboDojo/task/RoboDojo/config"""
     layout: Path | None = None
     """saved scene layout JSON; None uses the official evaluation layout"""
     cameras: tuple[str, ...] = ('head', 'left_wrist', 'right_wrist')
     """cameras shown to the model"""
 
     # Model
-    model: str = 'micu-gpt-6-astra'
-    """a Chat Completions model with vision, tool calling and token-usage reporting"""
-    base_url: str = 'CLEANRUA_BASE_URL'
+    model_env: str = 'CLEANRUA_MODEL_NAME'
+    """name of the environment variable holding a Chat Completions model with vision, tool calling and usage reporting"""
+    base_url_env: str = 'CLEANRUA_BASE_URL'
     """name of the environment variable holding the API base URL, including /v1"""
     api_key_env: str = 'CLEANRUA_API_KEY'
     """name of the environment variable holding the API key"""
@@ -57,21 +59,23 @@ class Args:
     """number of past tool call/result pairs kept in context (text only, no old images)"""
     max_output_tokens: int = 1024
     """output-token limit per model response"""
-    request_timeout: float = 120.
+    request_timeout: float = 300.
     """HTTP timeout per model request, in seconds"""
 
     # Budgets
-    max_decisions: int = 20
+    max_decisions: int = 60
     """maximum number of tool calls per episode"""
-    max_total_tokens: int = 100_000
+    max_total_tokens: int = 1_000_000
     """stop before executing an action once cumulative reported usage reaches this"""
-    episode_timeout: float = 600.
+    episode_timeout: float = 1800.
     """stop before executing an action once this many seconds have passed since reset"""
 
 
 # Each arm's grasp site in its link6 frame (m): the centre between the distal finger pads, same orientation.
 # From uni-robot-agent's x5_grasp_site.urdf. Local +X points toward the fingertips; fingers close along +/-Y.
 GRASP_SITE = np.array([.149335, -.000002, -.000854])
+# Per-task clarifications of the native instruction, such as returning the arms afterwards.
+TASK_REQUIREMENTS = json.loads((Path(__file__).parent / 'robodojo_task_requirements.json').read_text())['tasks']
 
 
 class Target(BaseModel):
@@ -274,8 +278,10 @@ class RUAgent:
 
     def __init__(self, args: Args, tools: list[dict]):
         self.args, self.tools = args, tools
-        self.client = httpx.Client(base_url=os.environ[args.base_url].rstrip('/') + '/', timeout=args.request_timeout,
-                                   headers={'Authorization': f'Bearer {os.environ[args.api_key_env]}'})
+        self.model = os.environ[args.model_env]
+        self.client = httpx.Client(base_url=os.environ[args.base_url_env].rstrip('/') + '/', timeout=args.request_timeout,
+                                   headers={'Authorization': f'Bearer {os.environ[args.api_key_env]}'},
+                                   transport=httpx.HTTPTransport(retries=2))  # Retries only failed connection setup.
         self.history: deque[tuple[dict, dict]] = deque(maxlen=args.history_size)
 
     def reset(self, task: str) -> None:
@@ -300,11 +306,11 @@ class RUAgent:
                 'url': 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()}}]
         messages = [{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': self.task},
                     *(message for pair in self.history for message in pair), {'role': 'user', 'content': content}]
-        body = {'model': self.args.model, 'messages': messages, 'tools': self.tools, 'tool_choice': 'required',
+        body = {'model': self.model, 'messages': messages, 'tools': self.tools, 'tool_choice': 'required',
                 'parallel_tool_calls': False, 'max_tokens': self.args.max_output_tokens, 'stream': False}
         if self.args.provider == 'aliyun':
             body['enable_thinking'] = False
-        response = self.client.post('chat/completions', json=body)  # No retries: a failed request ends the run.
+        response = self.client.post('chat/completions', json=body)  # A failed request ends the episode.
         response.raise_for_status()
         reply = response.json()
         self.total_tokens += reply['usage']['total_tokens']
@@ -321,7 +327,7 @@ class RUAgent:
 
 if __name__ == '__main__':
     args = tyro.cli(Args)
-    run_name = f'{args.exp_name}__{args.seed}__{int(time.time())}'
+    run_name = f'{args.task}__{args.exp_name}__{args.seed}__{int(time.time())}'
     run_dir = args.output_dir / run_name
     (run_dir / 'images').mkdir(parents=True)
     writer = SummaryWriter(str(run_dir))
@@ -333,45 +339,49 @@ if __name__ == '__main__':
         trajectory.write(json.dumps(record, default=lambda x: x.tolist() if hasattr(x, 'tolist') else str(x)) + '\n')
         trajectory.flush()
 
-    env = RoboDojoEnv(args.native_root, args.cameras, args.layout, render_mode='rgb_array' if args.capture_video else None)
+    env = RoboDojoEnv(args.native_root, args.task, args.cameras, args.layout, render_mode='rgb_array' if args.capture_video else None)
     if args.capture_video:
         env = gym.wrappers.RecordVideo(env, str(run_dir / 'videos'), episode_trigger=lambda _: True, disable_logger=True)
     env = RoboDojoWrapper(env)
     agent = RUAgent(args, env.schemas())
     try:
-        # The native success check also requires both arms back at their start poses.
         observation, info = env.reset(seed=args.seed)
         home = {name: np.round(arm['pose'], 4).tolist() for name, arm in observation['arms'].items()}
-        task = f'Task: {info["instruction"]} Afterwards, return both arms to their initial poses {json.dumps(home)}.'
+        requirements = ''.join(f'\n- {rule}' for rule in TASK_REQUIREMENTS[args.task])
+        task = (f'Task: {info["instruction"]}' + (f'\nAdditional requirements:{requirements}' if requirements else '')
+                + f'\nInitial grasp-site poses: {json.dumps(home)}')
         agent.reset(task)
-        log('reset', task=task, info=info, args=asdict(args))
+        log('reset', task=task, info=info, model=agent.model, args=asdict(args))
         start_time, stop_reason, total_reward = time.time(), 'max_decisions', 0.
 
-        for decision in range(1, args.max_decisions + 1):
-            for name, camera in observation['cameras'].items():
-                Image.fromarray(camera['rgb']).save(run_dir / 'images' / f'{decision:03d}_{name}.png')
-            action = agent.get_action(observation)
-            log('action', decision=decision, message=agent.message, total_tokens=agent.total_tokens)
-            writer.add_scalar('charts/total_tokens', agent.total_tokens, decision)
-            if agent.total_tokens >= args.max_total_tokens:
-                stop_reason = 'token_budget'
-                break
-            if time.time() - start_time >= args.episode_timeout:
-                stop_reason = 'timeout'
-                break
+        try:
+            for decision in range(1, args.max_decisions + 1):
+                for name, camera in observation['cameras'].items():
+                    Image.fromarray(camera['rgb']).save(run_dir / 'images' / f'{decision:03d}_{name}.png')
+                action = agent.get_action(observation)
+                log('action', decision=decision, message=agent.message, total_tokens=agent.total_tokens)
+                writer.add_scalar('charts/total_tokens', agent.total_tokens, decision)
+                if agent.total_tokens >= args.max_total_tokens:
+                    stop_reason = 'token_budget'
+                    break
+                if time.time() - start_time >= args.episode_timeout:
+                    stop_reason = 'timeout'
+                    break
 
-            observation, reward, terminated, truncated, info = env.step(action)
-            total_reward += reward
-            feedback = json.loads(observation['feedback'])
-            log('step', decision=decision, action=action, feedback=feedback, reward=reward, terminated=terminated,
-                truncated=truncated, info=info, arms=observation['arms'], native_steps=observation['native_steps'])
-            writer.add_scalar('charts/reward', reward, decision)
-            writer.add_scalar('charts/native_steps', observation['native_steps'], decision)
-            writer.add_scalar('charts/tool_ok', feedback['ok'], decision)
-            print(f'decision={decision} {action["name"]} {feedback}', flush=True)
-            if terminated or truncated:
-                stop_reason = 'finish' if env.finished else 'native_terminated' if terminated else 'native_truncated'
-                break
+                observation, reward, terminated, truncated, info = env.step(action)
+                total_reward += reward
+                feedback = json.loads(observation['feedback'])
+                log('step', decision=decision, action=action, feedback=feedback, reward=reward, terminated=terminated,
+                    truncated=truncated, info=info, arms=observation['arms'], native_steps=observation['native_steps'])
+                writer.add_scalar('charts/reward', reward, decision)
+                writer.add_scalar('charts/native_steps', observation['native_steps'], decision)
+                writer.add_scalar('charts/tool_ok', feedback['ok'], decision)
+                print(f'decision={decision} {action["name"]} {feedback}', flush=True)
+                if terminated or truncated:
+                    stop_reason = 'finish' if env.finished else 'native_terminated' if terminated else 'native_truncated'
+                    break
+        except httpx.HTTPError as exc:  # A failed model request ends the episode; the verdict is still recorded.
+            stop_reason = f'model_error: {type(exc).__name__}'
 
         verdict = env.unwrapped.evaluate()  # Official outcome; never shown to the agent.
         result = {'stop_reason': stop_reason, 'agent_finished': env.finished, **verdict, 'decisions': decision,

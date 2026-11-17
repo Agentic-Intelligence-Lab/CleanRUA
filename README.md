@@ -1,40 +1,55 @@
 # CleanRUA (Clean Implementation of Robot-Use Agents)
 
-CleanRUA provides clean, single-file implementations of robot-use agents for research.
-Inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl), each file keeps an agent's
-prompt, tools and interaction loop together, on top of a plain Gymnasium environment.
+CleanRUA has single-file implementations of robot-use agents for research. As in
+[CleanRL](https://github.com/vwxyzjn/cleanrl), one file contains the whole agent, including prompt, tools and the interaction loop. The environments are plain Gymnasium environments.
 
----
+<img alt="Hybrid control stacking three bowls in RoboDojo, seen from the head, left wrist and right wrist cameras" src="docs/hybrid_stack_bowls.gif" width="100%" />
+
 ### News
-- **[2026/11/17]** 🔥 Hybrid control is available: a vision-language model delegates local phases to Pi0.5 in [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py).
-- **[2026/11/16]** 🔥 Direct control is available: a vision-language model drives the robot through motion tools in [direct_robodojo.py](cleanrua/direct_robodojo.py).
+- **[2026/11/17]** Add hybrid control, where a vision-language model hands local phases to Pi0.5: [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py).
+- **[2026/11/16]** Add direct control, where a vision-language model moves the robot with motion tools: [direct_robodojo.py](cleanrua/direct_robodojo.py).
 
-### Quick start
+### Get started
 
-Follow the [installation guide](examples/installation.md), then run an agent:
+Install the dependencies with the [installation guide](examples/installation.md), set the model, then run an agent:
 
 ```sh
-python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --model YOUR_VISION_MODEL
+export CLEANRUA_MODEL_NAME=YOUR_VISION_MODEL
+export CLEANRUA_BASE_URL=https://YOUR_PROVIDER/v1
+export CLEANRUA_API_KEY=YOUR_API_KEY
+python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 ```
 
-| Agent | Idea |
-|---|---|
-| [direct_robodojo.py](cleanrua/direct_robodojo.py) | A vision-language model controls the robot through motion tools. |
-| [hybrid_robodojo.py](cleanrua/hybrid_robodojo.py) | The model also delegates local phases to a vision-language-action model. |
+Tips:
+1. To add a tool, write a `@Tool` method on the agent's wrapper. To change how the agent decides, edit its `RUAgent`.
+2. Environments are plain `gym.Env`s and know nothing about tools or models. Each agent adds them with a `gym.Wrapper`.
+3. Calling `finish` only ends the episode. Success is decided by the environment's own check.
 
-> [!TIP]
-> 1. To try your own idea, add a `@Tool` method to an agent's wrapper or change its `RUAgent`.
-> 2. Environments are plain `gym.Env`s without tools or models; agents add them with a `gym.Wrapper`.
-> 3. A finished tool call is not task success; results report the environment's own verdict.
+### Algorithms implemented
+
+| Algorithm | Description | Variants implemented |
+|---|---|---|
+| Direct control | A vision-language model moves the arms with motion tools. | [`direct_robodojo.py`](cleanrua/direct_robodojo.py) |
+| Hybrid control | The model also hands local phases to Pi0.5, a vision-language-action model, and reviews each of its action chunks. | [`hybrid_robodojo.py`](cleanrua/hybrid_robodojo.py) |
+
+### Cite Us
+
+```bibtex
+@misc{cleanrua2026yuan,
+  title        = {CleanRUA: Clean Implementation of Robot-Use Agents},
+  author       = {Mingqi Yuan, Xudong Wu, Jiayu Chen},
+  year         = {2026},
+  howpublished = {\url{https://github.com/friedrichyuan/CleanRUA}},
+}
+```
 
 ### Acknowledgements
 
 CleanRUA is inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl),
 [RoboSimStudio](https://github.com/robosimstudio/robosimstudio) and
-[uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent), and uses
-[RoboDojo](https://github.com/RoboDojo-Benchmark/RoboDojo) and
-[XPolicyLab](https://github.com/XPolicyLab/XPolicyLab) for simulation and action models.
-Thanks to their authors.
+[uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent). It uses
+[RoboDojo](https://github.com/RoboDojo-Benchmark/RoboDojo) for simulation and
+[XPolicyLab](https://github.com/XPolicyLab/XPolicyLab) for action models. We thank their authors.
 
 ### License
 

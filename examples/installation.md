@@ -18,6 +18,7 @@ export OMNI_KIT_ACCEPT_EULA=YES   # Otherwise Isaac Sim waits for an interactive
 Use a Chat Completions-compatible vision model with tool calling and token-usage reporting:
 
 ```sh
+export CLEANRUA_MODEL_NAME=YOUR_VISION_MODEL
 export CLEANRUA_BASE_URL=https://YOUR_PROVIDER/v1
 export CLEANRUA_API_KEY=YOUR_API_KEY
 ```
@@ -27,16 +28,18 @@ Add `--provider aliyun` for Alibaba Cloud.
 ## 3. Direct control
 
 ```sh
-python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --model YOUR_VISION_MODEL
+python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 tensorboard --logdir runs
 ```
 
-`--help` lists every option. Each run writes TensorBoard scalars, `trajectory.jsonl`, the images
-shown to the model, videos and `result.json` to `runs/<exp_name>__<seed>__<time>/`.
+`--task` takes any task in `RoboDojo/task/RoboDojo/config`. `--help` lists every option. Each run
+writes TensorBoard scalars, `trajectory.jsonl`, the images shown to the model, videos and
+`result.json` to `runs/<task>__<exp_name>__<seed>__<time>/`.
 
 ## 4. Hybrid control with Pi0.5
 
 Pi0.5 runs as XPolicyLab's policy server in its own environment. XPolicyLab ships inside RoboDojo.
+The checkpoint was trained on all RoboDojo simulation tasks, so one server serves every task.
 
 ```sh
 cd /path/to/RoboDojo/XPolicyLab/policy/Pi_05
@@ -65,10 +68,11 @@ compiles the model and takes about 10 seconds. XPolicyLab's `setup_eval_policy_s
 Keep the server running. In another terminal, from the CleanRUA directory:
 
 ```sh
-python -m cleanrua.hybrid_robodojo --native-root /path/to/RoboDojo --model YOUR_VISION_MODEL
+python -m cleanrua.hybrid_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 ```
 
-`--policy-url` selects another server address (default `ws://localhost:6000`).
+By default the same vision model also reviews each Pi0.5 chunk before it runs; `--no-review` runs
+the chunks unreviewed. `--policy-url` selects another server address (default `ws://localhost:6000`).
 
 ## 5. Tests
 
@@ -78,4 +82,5 @@ python tests/smoke_robodojo.py --native-root /path/to/RoboDojo     # GPU: native
 ```
 
 The GPU test scripts capture, hold, a 1 cm lift, gripper close/open, return and finish through the
-agents' wrapper. It checks control, not task success.
+agents' wrapper, and compares forward kinematics with the measured pose. It checks control, not
+task success.
