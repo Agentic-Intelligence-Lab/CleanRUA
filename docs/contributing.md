@@ -30,3 +30,11 @@ pip install -r docs/requirements.txt
 mkdocs serve        # http://127.0.0.1:8000
 mkdocs build --strict
 ```
+
+## Acknowledgements
+
+CleanRUA is inspired by [CleanRL](https://github.com/vwxyzjn/cleanrl),
+[RoboSimStudio](https://github.com/robosimstudio/robosimstudio) and
+[uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent). It uses
+[RoboDojo](https://github.com/RoboDojo-Benchmark/RoboDojo) for simulation and
+[XPolicyLab](https://github.com/XPolicyLab/XPolicyLab) for action models. We thank their authors.

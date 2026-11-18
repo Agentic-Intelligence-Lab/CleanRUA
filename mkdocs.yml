@@ -8,27 +8,26 @@ copyright: Copyright &copy; 2026 CleanRUA authors · MIT License
 
 theme:
   name: material
-  logo: logo.jpg
-  favicon: logo.jpg
+  favicon: assets/favicon.svg
   icon:
+    logo: material/robot-industrial
     repo: fontawesome/brands/github
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: white
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: black
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
   features:
-    - navigation.tabs
     - navigation.sections
     - navigation.top
     - navigation.footer
@@ -38,10 +37,10 @@ theme:
     - content.action.edit
 
 nav:
-  - Home: index.md
-  - Get started:
+  - Overview: index.md
+  - Get Started:
       - Installation: get-started/installation.md
-  - Algorithms:
+  - RUA Algorithms:
       - Overview: algorithms/overview.md
       - Direct: algorithms/direct.md
       - Code: algorithms/code.md
@@ -49,7 +48,11 @@ nav:
       - Monitor: algorithms/monitor.md
   - Environments:
       - RoboDojo: environments/robodojo.md
-  - Contributing: contributing.md
+  - Community:
+      - Contribution: contributing.md
+
+extra_css:
+  - stylesheets/extra.css
 
 markdown_extensions:
   - admonition
@@ -74,3 +77,4 @@ extra:
 
 exclude_docs: |
   requirements.txt
+  logo.jpg
