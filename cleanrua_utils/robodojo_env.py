@@ -85,7 +85,7 @@ class RoboDojoEnv(gym.Env):
             self.sim.get_score()  # ... and its partial-credit score, which not every task has.
         self._started, self._gripper_command = True, dict.fromkeys(ARMS, 1.)  # Native reset opens both grippers.
         observation = self._observe()
-        return observation, {'instruction': self.sim.obs_manager.instruction[0]}
+        return observation, {'instruction': self.sim.obs_manager.instruction[0], 'step_limit': int(self.sim.step_lim)}
 
     def step(self, action):
         self.sim.take_action({  # Interpolates natively, advances physics and checks success and failure.

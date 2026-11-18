@@ -69,6 +69,13 @@ The server is ready when it listens on port 6000, after about 15 seconds; the fi
 compiles the model and takes about 10 seconds. XPolicyLab's `setup_eval_policy_server.sh` fixes
 `XLA_PYTHON_CLIENT_MEM_FRACTION=0.3`, which fits only on GPUs with at least 32 GB.
 
+The server can also run on another GPU host. There,
+[`examples/pi05_server/serve.sh`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/examples/pi05_server/serve.sh)
+starts it on `localhost:6000`; on the simulation machine,
+[`examples/pi05_server/tunnel.sh`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/examples/pi05_server/tunnel.sh)
+forwards local port 6000 to it over SSH, so agents keep the default `--policy-url`. Images are sent uncompressed,
+about 2.8 MB per chunk: over an uplink of about 2.5 MB/s, each prediction takes about 1.3 s instead of 0.2 s.
+
 Keep the server running. In another terminal, from the CleanRUA directory:
 
 ```sh

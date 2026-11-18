@@ -37,7 +37,7 @@ class FakeRoboDojo(gym.Env):
         self.steps, self.pending = 0, {}
         self.arms = {a: {'joints': np.zeros(6), 'ee_pose': np.array([x, 0., .9, 1., 0., 0., 0.]),
                          'gripper': np.array(1.), 'gripper_command': np.array(1.)} for a, x in zip(ARMS, (-.3, .3))}
-        return self._obs(), {'instruction': 'Stack the bowls.'}
+        return self._obs(), {'instruction': 'Stack the bowls.', 'step_limit': 800}
 
     def _obs(self):
         camera = {'rgb': np.zeros((4, 4, 3), np.uint8), 'intrinsic_K': np.eye(3), 'T_world_from_optical': np.eye(4)}
@@ -176,7 +176,9 @@ class AgentTest(unittest.TestCase):
         def handler(request):
             requests.append(json.loads(request.content))
             n = len(requests)
-            return httpx.Response(200, json={'usage': {'total_tokens': 10}, 'choices': [{'message': {
+            usage = {'total_tokens': 10, 'prompt_tokens': 8, 'completion_tokens': 2,
+                     'prompt_tokens_details': {'cached_tokens': 4}}
+            return httpx.Response(200, json={'usage': usage, 'choices': [{'message': {
                 'role': 'assistant', 'content': 'look', 'tool_calls': [{'id': f'call-{n}', 'type': 'function',
                     'function': {'name': 'capture_scene', 'arguments': '{}'}}]}}]})
 
@@ -187,7 +189,7 @@ class AgentTest(unittest.TestCase):
         agent.client = httpx.Client(base_url=agent.client.base_url, transport=httpx.MockTransport(handler))
         env = direct.RoboDojoWrapper(FakeRoboDojo())
         obs, _ = env.reset()
-        agent.reset('Task: stack the bowls.')
+        agent.reset('Task: stack the bowls.', step_limit=800)
         action = agent.get_action(obs)
         self.assertEqual(action, {'name': 'capture_scene', 'arguments': '{}'})
         obs, *_ = env.step(action)
@@ -201,10 +203,15 @@ class AgentTest(unittest.TestCase):
         observation = json.loads(second['messages'][-1]['content'][0]['text'].removeprefix('Current observation: '))
         np.testing.assert_allclose(observation['arms']['left']['pose'],  # Grasp site as [xyz, rpy], rounded.
                                    np.round([-.3 + .149335, -.000002, .9 - .000854, 0., 0., 0.], 4))
+        self.assertEqual(observation['steps_remaining'], 800)  # capture_scene does not advance physics.
         images = [part for part in second['messages'][-1]['content'] if part['type'] == 'image_url']
         self.assertEqual(len(images), 1)  # Only the current observation carries images.
         self.assertTrue(images[0]['image_url']['url'].startswith('data:image/png;base64,'))
         self.assertEqual(agent.total_tokens, 20)
+        self.assertEqual({key: agent.usage[key] for key in ('requests', 'images', 'prompt_tokens', 'completion_tokens',
+                                                            'cached_tokens', 'reasoning_tokens')},
+                         {'requests': 2, 'images': 2, 'prompt_tokens': 16, 'completion_tokens': 4, 'cached_tokens': 8,
+                          'reasoning_tokens': 0})
 
 
 if __name__ == '__main__':
