@@ -1,10 +1,10 @@
-"""CPU tests for the hybrid wrapper's actor_act tool, with a fake action-model server."""
+"""CPU tests for the delegate wrapper's actor_act tool, with a fake action-model server."""
 import json
 import unittest
 
 import numpy as np
 
-from cleanrua import hybrid_robodojo as hybrid
+from cleanrua import delegate_robodojo as delegate
 from test_direct_robodojo import FakeRoboDojo
 
 
@@ -24,7 +24,7 @@ class FakePolicy:
 class ActorActTest(unittest.TestCase):
     def setUp(self):
         self.policy = FakePolicy()
-        self.env = hybrid.RoboDojoWrapper(FakeRoboDojo(), self.policy)
+        self.env = delegate.RoboDojoWrapper(FakeRoboDojo(), self.policy)
         self.env.reset()
 
     def act(self, **arguments):

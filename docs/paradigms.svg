@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="290" viewBox="0 0 960 290" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>Four robot-use agent paradigms in CleanRUA</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      .card { fill: #ffffff; stroke: #d0d7de; }
+      .title { font-size: 17px; font-weight: 600; fill: #1f2328; text-anchor: middle; }
+      .box { stroke-width: 1.2; }
+      .llm { fill: #ddf4ff; stroke: #0969da; }
+      .exec { fill: #f6f8fa; stroke: #57606a; }
+      .robot { fill: #fff1e5; stroke: #bc4c00; }
+      .name { font-size: 14px; fill: #1f2328; text-anchor: middle; dominant-baseline: central; }
+      .down { stroke: #57606a; stroke-width: 1.5; fill: none; }
+      .up { stroke: #8c959f; stroke-width: 1.2; stroke-dasharray: 4 3; fill: none; }
+      .label { font-size: 12.5px; fill: #57606a; }
+      .caption { font-size: 12.5px; fill: #57606a; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="960" height="290" rx="12" fill="#ffffff"/>
+
+  <!-- Direct -->
+  <g transform="translate(10,10)">
+    <rect class="card" x="0" y="0" width="225" height="245" rx="10"/>
+    <text class="title" x="112" y="30">Direct</text>
+    <rect class="box llm" x="37" y="48" width="150" height="36" rx="6"/><text class="name" x="112" y="66">MLLM</text>
+    <rect class="box exec" x="37" y="128" width="150" height="36" rx="6"/><text class="name" x="112" y="146">Inverse kinematics</text>
+    <rect class="box robot" x="37" y="196" width="150" height="36" rx="6"/><text class="name" x="112" y="214">Robot</text>
+    <line class="down" x1="70" y1="84" x2="70" y2="126" marker-end="url(#arrow)"/>
+    <text class="label" x="78" y="104">target pose</text>
+    <text class="label" x="78" y="119">(tool call)</text>
+    <line class="down" x1="70" y1="164" x2="70" y2="194" marker-end="url(#arrow)"/>
+    <path class="up" d="M187,214 H205 V66 H189" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Code -->
+  <g transform="translate(248,10)">
+    <rect class="card" x="0" y="0" width="225" height="245" rx="10"/>
+    <text class="title" x="112" y="30">Code</text>
+    <rect class="box llm" x="37" y="48" width="150" height="36" rx="6"/><text class="name" x="112" y="66">MLLM</text>
+    <rect class="box exec" x="37" y="128" width="150" height="36" rx="6"/><text class="name" x="112" y="146">Python + robot API</text>
+    <rect class="box robot" x="37" y="196" width="150" height="36" rx="6"/><text class="name" x="112" y="214">Robot</text>
+    <line class="down" x1="70" y1="84" x2="70" y2="126" marker-end="url(#arrow)"/>
+    <text class="label" x="78" y="104">program</text>
+    <text class="label" x="78" y="119">(many motions)</text>
+    <line class="down" x1="70" y1="164" x2="70" y2="194" marker-end="url(#arrow)"/>
+    <path class="up" d="M187,214 H205 V66 H189" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Delegate -->
+  <g transform="translate(486,10)">
+    <rect class="card" x="0" y="0" width="225" height="245" rx="10"/>
+    <text class="title" x="112" y="30">Delegate</text>
+    <rect class="box llm" x="37" y="48" width="150" height="36" rx="6"/><text class="name" x="112" y="66">MLLM</text>
+    <rect class="box exec" x="37" y="128" width="150" height="36" rx="6"/><text class="name" x="112" y="146">VLA (Pi0.5)</text>
+    <rect class="box robot" x="37" y="196" width="150" height="36" rx="6"/><text class="name" x="112" y="214">Robot</text>
+    <line class="down" x1="70" y1="84" x2="70" y2="126" marker-end="url(#arrow)"/>
+    <text class="label" x="78" y="104">sub-task</text>
+    <text class="label" x="78" y="119">instruction</text>
+    <line class="down" x1="70" y1="164" x2="70" y2="194" marker-end="url(#arrow)"/>
+    <path class="up" d="M187,214 H205 V66 H189" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Monitor -->
+  <g transform="translate(724,10)">
+    <rect class="card" x="0" y="0" width="225" height="245" rx="10"/>
+    <text class="title" x="112" y="30">Monitor</text>
+    <rect class="box llm" x="37" y="48" width="150" height="36" rx="6"/><text class="name" x="112" y="66">MLLM</text>
+    <rect class="box exec" x="37" y="128" width="150" height="36" rx="6"/><text class="name" x="112" y="146">VLA (Pi0.5) + task</text>
+    <rect class="box robot" x="37" y="196" width="150" height="36" rx="6"/><text class="name" x="112" y="214">Robot</text>
+    <line class="down" x1="70" y1="84" x2="70" y2="126" marker-end="url(#arrow)"/>
+    <text class="label" x="78" y="104">continue, or</text>
+    <text class="label" x="78" y="119">correct directly</text>
+    <line class="down" x1="70" y1="164" x2="70" y2="194" marker-end="url(#arrow)"/>
+    <path class="up" d="M187,214 H205 V66 H189" marker-end="url(#arrow)"/>
+  </g>
+
+  <text class="caption" x="480" y="280">Solid arrows: what the MLLM sends each turn. Dashed arrows: camera images and robot state back to the MLLM.</text>
+</svg>

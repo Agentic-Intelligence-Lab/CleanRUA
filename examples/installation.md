@@ -25,18 +25,22 @@ export CLEANRUA_API_KEY=YOUR_API_KEY
 
 Add `--provider aliyun` for Alibaba Cloud.
 
-## 3. Direct control
+## 3. Direct and Code
 
 ```sh
 python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_bowls
+python -m cleanrua.code_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 tensorboard --logdir runs
 ```
+
+Code runs the model's programs in the agent process without a sandbox; run it only in an environment you
+trust.
 
 `--task` takes any task in `RoboDojo/task/RoboDojo/config`. `--help` lists every option. Each run
 writes TensorBoard scalars, `trajectory.jsonl`, the images shown to the model, videos and
 `result.json` to `runs/<task>__<exp_name>__<seed>__<time>/`.
 
-## 4. Hybrid control with Pi0.5
+## 4. Delegate and Monitor with Pi0.5
 
 Pi0.5 runs as XPolicyLab's policy server in its own environment. XPolicyLab ships inside RoboDojo.
 The checkpoint was trained on all RoboDojo simulation tasks, so one server serves every task.
@@ -68,10 +72,12 @@ compiles the model and takes about 10 seconds. XPolicyLab's `setup_eval_policy_s
 Keep the server running. In another terminal, from the CleanRUA directory:
 
 ```sh
-python -m cleanrua.hybrid_robodojo --native-root /path/to/RoboDojo --task stack_bowls
+python -m cleanrua.delegate_robodojo --native-root /path/to/RoboDojo --task stack_bowls
+python -m cleanrua.monitor_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 ```
 
-`--policy-url` selects another server address (default `ws://localhost:6000`).
+`--policy-url` selects another server address (default `ws://localhost:6000`). On a 16 GB GPU, stop the
+server before running Direct or Code: some scenes do not fit next to it.
 
 ## 5. Tests
 
