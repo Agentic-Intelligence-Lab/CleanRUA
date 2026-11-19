@@ -18,3 +18,53 @@
   --md-typeset-a-color: #67e8f9;
   --md-default-bg-color: #0b1120;
 }
+
+/* Result charts (docs/javascripts/charts.js): validated categorical slots, recessive chrome. */
+.rua-row {
+  --rua-monitor: #2a78d6;
+  --rua-delegate: #eb6834;
+  --rua-code: #1baf7a;
+  --rua-direct: #eda100;
+  --rua-ink: #0b0b0b;
+  --rua-ink-2: #52514e;
+  --rua-muted: #898781;
+  --rua-grid: #e1e0d9;
+  --rua-axis: #c3c2b7;
+  --rua-surface: #ffffff;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem 1.2rem; margin: 0.6rem 0 1rem;
+}
+[data-md-color-scheme="slate"] .rua-row {
+  --rua-monitor: #3987e5;
+  --rua-delegate: #d95926;
+  --rua-code: #199e70;
+  --rua-direct: #c98500;
+  --rua-ink: #f0efec;
+  --rua-ink-2: #c3c2b7;
+  --rua-grid: #232a3a;
+  --rua-axis: #334155;
+  --rua-surface: #0b1120;
+}
+@media (max-width: 44em) { .rua-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rua-figure { position: relative; }
+.rua-title { font-size: 0.7rem; font-weight: 600; color: var(--rua-ink); }
+.rua-figure svg { display: block; width: 100%; height: auto; overflow: visible; font-family: inherit; }
+.rua-grid { stroke: var(--rua-grid); stroke-width: 1; }
+.rua-axis { stroke: var(--rua-axis); stroke-width: 1; }
+.rua-tick { fill: var(--rua-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.rua-category { fill: var(--rua-ink-2); font-size: 9.5px; }
+.rua-value { fill: var(--rua-ink); font-size: 10px; font-weight: 600; }
+.rua-monitor { fill: var(--rua-monitor); }
+.rua-delegate { fill: var(--rua-delegate); }
+.rua-code { fill: var(--rua-code); }
+.rua-direct { fill: var(--rua-direct); }
+.rua-hit { outline: none; }
+.rua-hit.rua-active .rua-bar { filter: brightness(1.12); }
+.rua-hit:focus-visible rect { stroke: var(--rua-ink-2); stroke-width: 1; }
+.rua-tooltip {
+  position: absolute; z-index: 1; transform: translate(-50%, -100%); pointer-events: none; white-space: nowrap;
+  display: flex; flex-direction: column; padding: 3px 7px; border-radius: 6px; font-size: 0.62rem;
+  background: var(--rua-surface); color: var(--rua-ink-2); border: 1px solid var(--rua-grid);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.rua-tooltip strong { color: var(--rua-ink); font-size: 0.72rem; }
+.rua-row [hidden] { display: none !important; }

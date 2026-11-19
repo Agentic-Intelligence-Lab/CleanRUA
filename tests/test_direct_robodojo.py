@@ -212,6 +212,40 @@ class AgentTest(unittest.TestCase):
                                                             'cached_tokens', 'reasoning_tokens')},
                          {'requests': 2, 'images': 2, 'prompt_tokens': 16, 'completion_tokens': 4, 'cached_tokens': 8,
                           'reasoning_tokens': 0})
+        self.assertDictEqual(
+            agent.last_usage,
+            {'total_tokens': 10, 'prompt_tokens': 8, 'completion_tokens': 2, 'cached_tokens': 4, 'reasoning_tokens': 0})
+
+
+    def test_unlimited_history_keeps_every_pair(self):
+        requests = []
+
+        def handler(request):
+            requests.append(json.loads(request.content))
+            n = len(requests)
+            usage = {'total_tokens': 10, 'prompt_tokens': 8, 'completion_tokens': 2,
+                     'prompt_tokens_details': {'cached_tokens': 4}}
+            return httpx.Response(200, json={'usage': usage, 'choices': [{'message': {
+                'role': 'assistant', 'content': 'look', 'tool_calls': [{'id': f'call-{n}', 'type': 'function',
+                    'function': {'name': 'capture_scene', 'arguments': '{}'}}]}}]})
+
+        variables = {'CLEANRUA_API_KEY': 'test-key', 'CLEANRUA_BASE_URL': 'https://model.invalid/v1',
+                     'CLEANRUA_MODEL_NAME': 'test-model'}
+        with mock.patch.dict(os.environ, variables):
+            agent = direct.RUAgent(direct.Args(history_size=None), tools=[])
+        base_url = agent.client.base_url
+        agent.close()
+        agent.client = httpx.Client(base_url=base_url, transport=httpx.MockTransport(handler))
+        self.addCleanup(agent.close)
+        env = direct.RoboDojoWrapper(FakeRoboDojo())
+        self.addCleanup(env.close)
+        obs, _ = env.reset()
+        agent.reset('Task: stack the bowls.', step_limit=800)
+        for _ in range(6):
+            action = agent.get_action(obs)
+            obs, *_ = env.step(action)
+        self.assertEqual([m['role'] for m in requests[5]['messages']],
+                         ['system', 'user'] + ['assistant', 'tool'] * 5 + ['user'])
 
 
 if __name__ == '__main__':

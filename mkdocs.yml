@@ -40,6 +40,7 @@ nav:
   - Overview: index.md
   - Get Started:
       - Installation: get-started/installation.md
+      - Evaluation: get-started/evaluation.md
   - RUA Algorithms:
       - Overview: algorithms/overview.md
       - Direct: algorithms/direct.md
@@ -53,6 +54,9 @@ nav:
 
 extra_css:
   - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/charts.js
 
 markdown_extensions:
   - admonition

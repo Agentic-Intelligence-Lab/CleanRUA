@@ -56,8 +56,8 @@ class Args:
     """name of the environment variable holding the API key"""
     provider: Literal['openai-compatible', 'aliyun'] = 'openai-compatible'
     """`aliyun` additionally disables thinking"""
-    history_size: int = 4
-    """number of past tool call/result pairs kept in context (text only, no old images)"""
+    history_size: int | None = 4
+    """number of past tool call/result pairs kept in context (text only, no old images); None keeps all"""
     max_output_tokens: int = 1024
     """output-token limit per model response"""
     request_timeout: float = 300.
@@ -324,11 +324,13 @@ class RUAgent:
         response.raise_for_status()
         reply = response.json()
         usage = reply['usage']
+        self.last_usage = {
+            'total_tokens': usage.get('total_tokens') or 0, 'prompt_tokens': usage.get('prompt_tokens') or 0,
+            'completion_tokens': usage.get('completion_tokens') or 0,
+            'cached_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0,
+            'reasoning_tokens': (usage.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0}
         self.usage.update(requests=1, images=len(observation['cameras']), model_s=time.time() - start,
-                          total_tokens=usage['total_tokens'], prompt_tokens=usage.get('prompt_tokens') or 0,
-                          completion_tokens=usage.get('completion_tokens') or 0,
-                          cached_tokens=(usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0,
-                          reasoning_tokens=(usage.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0)
+                          **self.last_usage)
         self.message = reply['choices'][0]['message']
         if not self.message.get('tool_calls'):
             raise RuntimeError(f'The model replied without a tool call: {self.message.get("content")!r}')
@@ -370,13 +372,15 @@ if __name__ == '__main__':
         log('reset', task=task, info=info, model=agent.model, commit=commit, args=asdict(args))
         start_time, stop_reason, total_reward, env_s = time.time(), 'max_decisions', 0., 0.
         tools, tool_errors, tool_steps, stops = Counter(), Counter(), Counter(), Counter()
+        model_error_detail = None
 
         try:
             for decision in range(1, args.max_decisions + 1):
                 for name, camera in observation['cameras'].items():
                     Image.fromarray(camera['rgb']).save(run_dir / 'images' / f'{decision:03d}_{name}.png')
                 action = agent.get_action(observation)
-                log('action', decision=decision, message=agent.message, total_tokens=agent.total_tokens)
+                log('action', decision=decision, message=agent.message, total_tokens=agent.total_tokens,
+                    usage=agent.last_usage)
                 writer.add_scalar('charts/total_tokens', agent.total_tokens, decision)
                 if agent.total_tokens >= args.max_total_tokens:
                     stop_reason = 'token_budget'
@@ -405,11 +409,17 @@ if __name__ == '__main__':
                     stop_reason = 'finish' if env.finished else 'native_terminated' if terminated else 'native_truncated'
                     break
         except httpx.HTTPError as exc:  # A failed model request ends the episode; the verdict is still recorded.
-            stop_reason = f'model_error: {type(exc).__name__}'
+            if isinstance(exc, httpx.HTTPStatusError):
+                stop_reason = f'model_error: HTTP {exc.response.status_code}'
+                model_error_detail = exc.response.text[:300]
+            else:
+                stop_reason = f'model_error: {type(exc).__name__}'
+                model_error_detail = str(exc)[:300]
 
         verdict = env.unwrapped.evaluate()  # Official outcome; never shown to the agent.
         result = {'algorithm': args.exp_name, 'task': args.task, 'model': agent.model, 'commit': commit,
-                  'stop_reason': stop_reason, **verdict, 'agent_finished': env.finished,
+                  'stop_reason': stop_reason, 'model_error_detail': model_error_detail,
+                  **verdict, 'agent_finished': env.finished,
                   'finish_correct': env.finished and verdict['success'], 'decisions': decision,
                   'native_steps': observation['native_steps'], 'step_limit': agent.step_limit,
                   **{key: round(value, 1) if key.endswith('_s') else value for key, value in agent.usage.items()},
