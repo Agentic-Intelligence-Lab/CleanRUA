@@ -13,8 +13,10 @@ and one file.
 | [Delegate](delegate.md) | A sub-task instruction for a VLA | Pi0.5 | [uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent) hybrid mode; [Hi Robot](https://arxiv.org/abs/2502.19417) |
 | [Monitor](monitor.md) | "Continue", or a correction | Pi0.5 with the task instruction, and the MLLM's motion tools | [Spotter](https://arxiv.org/abs/2609.36808); [GPT 6 Astra as an Embodied Policy](https://github.com/anonymous-report-421/GPT-as-Policy) |
 
-Cross-episode learning, such as playbooks, memories and skill libraries, works on top of any of these
-paradigms. It will be added as variants, for example `direct_memory_robodojo.py`.
+A variant changes one aspect of a paradigm and adds a word to its file name, so each file still implements one
+algorithm: `code_delegate` lets Code programs call the VLA, and `code_jev` and `direct_jev` compact the history
+with Jev. Cross-episode learning, such as playbooks, memories and skill libraries, will be added the same way, for
+example `direct_memory_robodojo.py`.
 
 ## What every agent shares
 

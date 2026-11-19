@@ -69,7 +69,7 @@ class Args:
     """HTTP timeout per model request, in seconds"""
 
     # Context compaction
-    jev_budget_tokens: int = 8_000
+    jev_budget_tokens: int = 2_500
     """compact the history once its text is estimated to exceed this many tokens"""
     jev_keep_recent: int = 4
     """newest tool call/result pairs never compacted"""

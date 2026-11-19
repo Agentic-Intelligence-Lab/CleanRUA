@@ -12,6 +12,8 @@ Based on [Code as Policies](https://arxiv.org/abs/2209.07753) and its multi-turn
 | Variant | Description |
 |---|---|
 | [`code_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_robodojo.py) | RoboDojo, two ARX X5 arms |
+| [`code_delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_delegate_robodojo.py) | Programs can also hand short phases to Pi0.5 with `robot.vla` ([below](#code_delegate)) |
+| [`code_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_jev_robodojo.py) | Keeps the whole history and compacts it with Jev ([below](#code_jev)) |
 
 ## Usage
 
@@ -65,3 +67,38 @@ Inside a program:
 | stack_blocks | **100** (success) | 24 | 164k |
 
 All 24 programs in `stack_blocks` ran without errors; most were 2 to 9 lines long.
+
+## `code_delegate`
+
+Based on [PyRUA-Lean](https://github.com/DAGroup-PKU/PyRUA-Lean), which composes robot primitives and frozen VLA
+policies in persistent Python cells. Programs get one more call:
+
+| Name | What it does |
+|---|---|
+| `robot.vla(instruction, arms, chunks=1, actions_per_chunk=25)` | Runs Pi0.5 on `arms` with a short instruction, such as "Pick up the white block"; the other arm holds |
+
+A program can mix it with `robot.move`: run the action model for a chunk, check the measured gripper opening,
+then correct or retry. It needs the Pi0.5 server of [Delegate](delegate.md). On `put_bottles_into_dustbin` it
+succeeded in 10 decisions and 56k tokens, where Code scored 25 with 386k, but every program there only called
+`robot.vla`.
+
+## `code_jev`
+
+Keeps the whole history (`--history-size None` is the default). Once the history text is estimated to exceed
+`--jev-budget-tokens` (2,500), it asks [Jev](https://typesafe.ai/blog/introducing-system-one-models-and-jev), a
+model that answers typed questions with probabilities, two questions about every older tool call: is its result
+still needed verbatim, and is the call still worth remembering. A pair whose result is needed stays; a pair whose
+call alone is needed keeps the call with its result cut to 300 characters; the rest is removed. The newest four
+pairs are never touched, and nothing kept is rewritten or summarized. It needs `TYPESAFE_API_KEY`.
+
+In one episode per task (2026-11-19), against Code with the last four pairs (window) and Code with the whole
+history:
+
+| Task | Window | Whole history | `code_jev` |
+|---|---|---|---|
+| stack_blocks | **100** · 102k tokens | **100** · 502k | **100** · 95k |
+| arrange_largest_number | 30 · 297k | 30 · 787k | **100** · 141k |
+| classify_objects | 40 · 610k | stopped by a provider timeout | **100** · 443k |
+
+Jev itself cost about $0.01 per episode and 0.5 seconds per compaction. One episode per cell cannot separate the
+method from sampling variance; repeats are planned.

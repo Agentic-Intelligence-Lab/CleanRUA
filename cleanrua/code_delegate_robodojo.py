@@ -1,7 +1,7 @@
-# Code with an action model on RoboDojo: an LLM writes Python programs that drive two ARX X5 arms through a small
-# robot API whose primitives include short phases of a Pi0.5 action model, and sees each program's output,
-# images and state before writing the next. Following PyRUA-Lean (2026), which composes robot primitives and
-# frozen VLA policies in persistent Python cells.
+# Code with delegation on RoboDojo: an LLM writes Python programs that drive two ARX X5 arms through a small robot
+# API, and the programs can delegate short phases to a Pi0.5 action model with `robot.vla`. It sees each program's
+# output, images and state before writing the next. Following PyRUA-Lean (2026), which composes robot primitives
+# and frozen VLA policies in persistent Python cells.
 # Setup and usage: examples/installation.md
 import base64
 import inspect

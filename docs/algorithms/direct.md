@@ -12,6 +12,7 @@ on direct LLM control as evaluated in [GPT-6 Astra on RoboDojo](https://arxiv.or
 | Variant | Description |
 |---|---|
 | [`direct_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/direct_robodojo.py) | RoboDojo, two ARX X5 arms |
+| [`direct_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/direct_jev_robodojo.py) | Keeps the whole history and compacts it with Jev, as [`code_jev`](code.md#code_jev) does |
 
 ## Usage
 
@@ -58,3 +59,7 @@ python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_
 | push_T | 0 | 60 (budget) | 363k |
 
 In `stack_bowls`, 11 of the 58 `move` calls failed on inverse kinematics and 5 stalled.
+
+`direct_jev` gave no clear gain (2026-11-19, one episode each): `stack_blocks_by_language` still succeeded, with
+329k tokens instead of 207k, and `put_bottles_into_dustbin` scored 25 instead of 10 but still ran out of steps.
+Direct's failures come from inverse kinematics and step limits more than from its context.

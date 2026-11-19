@@ -1,10 +1,10 @@
-"""CPU tests for robot.vla in the code-with-action-model wrapper, with a fake action-model server."""
+"""CPU tests for robot.vla in the code-with-delegation wrapper, with a fake action-model server."""
 import json
 import unittest
 
 import numpy as np
 
-from cleanrua import code_vla_robodojo as code_vla
+from cleanrua import code_delegate_robodojo as code_delegate
 from test_delegate_robodojo import FakePolicy
 from test_direct_robodojo import FakeRoboDojo
 
@@ -12,7 +12,7 @@ from test_direct_robodojo import FakeRoboDojo
 class VlaTest(unittest.TestCase):
     def setUp(self):
         self.policy = FakePolicy()
-        self.env = code_vla.RoboDojoWrapper(FakeRoboDojo(), self.policy)
+        self.env = code_delegate.RoboDojoWrapper(FakeRoboDojo(), self.policy)
         self.env.reset()
 
     def run_code(self, program):
