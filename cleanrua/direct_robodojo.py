@@ -1,5 +1,5 @@
 # Direct control on RoboDojo: an LLM drives two ARX X5 arms through four tools.
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_robodojo.md
 import base64
 import inspect
 import io

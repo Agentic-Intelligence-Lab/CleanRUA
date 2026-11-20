@@ -2,7 +2,7 @@
 
 Following the [CleanRL](https://github.com/vwxyzjn/cleanrl) design philosophy, CleanRUA provides single-file, high-quality implementations of robot-use agents for reproducible research. Each code file contains a whole agent, including the prompt, tools, and the interaction loop. The environments are plain Gymnasium environments.
 
-<img alt="Head-camera views of three successful RoboDojo episodes: delegate stacking bowls, direct stacking blocks, and direct lifting scissors" src="docs/demo.gif" width="100%" />
+<img alt="Successful episodes. Top, RoboDojo head camera: delegate stacking bowls, direct stacking blocks and direct lifting scissors. Bottom, DexJoCo ego camera: delegate clicking the mouse on its pad, delegate hammering the nail and monitor lifting the bucket with the boxed food inside" src="docs/demo.gif" width="100%" />
 
 ### News
 - **[2026/11/20]** Add [DexJoCo](https://github.com/brave-eai/dexjoco), with dexterous Allegro hands, and three agents for it: [delegate_dexjoco.py](cleanrua/delegate_dexjoco.py), [monitor_dexjoco.py](cleanrua/monitor_dexjoco.py) and [code_delegate_dexjoco.py](cleanrua/code_delegate_dexjoco.py). Over 50 episodes on five tasks, Delegate succeeded in 36 and Pi0.5 alone in 28 ([evaluation](https://cleanrua.agentic-intelligence-lab.org/get-started/evaluation/)). [monitor_check_dexjoco.py](cleanrua/monitor_check_dexjoco.py) makes Monitor judge every stretch and correct stalls; it succeeded less often than Monitor.
@@ -13,7 +13,7 @@ Following the [CleanRL](https://github.com/vwxyzjn/cleanrl) design philosophy, C
 
 ### Get started
 
-Install the dependencies by following the [installation guide](examples/installation.md). Then set the model and run an agent:
+Install the dependencies by following the installation guide for [RoboDojo](examples/installation_robodojo.md) or [DexJoCo](examples/installation_dexjoco.md). Then set the model and run an agent:
 
 ```sh
 export CLEANRUA_MODEL_NAME=YOUR_MODEL
@@ -30,14 +30,14 @@ Tips:
 
 ### Algorithms implemented
 
-<img alt="Four paradigms. Direct: the MLLM sends a target pose to inverse kinematics. Code: it sends a program to a Python robot API. Delegate: it sends a sub-task instruction to a VLA. Monitor: a VLA works on the task while the MLLM lets it continue or corrects the robot directly. In all four, camera images and robot state return to the MLLM." src="docs/paradigms.svg" width="100%" />
+In each diagram, the solid arrows show what the MLLM sends each turn, and the dashed arrow brings camera images and robot state back to it.
 
 | Algorithm | Description | Variants implemented |
 |---|---|---|
-| Direct | An MLLM moves the arms with motion tools. | [`direct_robodojo.py`](cleanrua/direct_robodojo.py), [`direct_jev_robodojo.py`](cleanrua/direct_jev_robodojo.py) |
-| Code | An MLLM writes Python programs that move the arms through a robot API. | [`code_robodojo.py`](cleanrua/code_robodojo.py), [`code_delegate_robodojo.py`](cleanrua/code_delegate_robodojo.py), [`code_jev_robodojo.py`](cleanrua/code_jev_robodojo.py), [`code_delegate_dexjoco.py`](cleanrua/code_delegate_dexjoco.py) |
-| Delegate | An MLLM gives sub-task instructions to Pi0.5 and can also move the arms itself. | [`delegate_robodojo.py`](cleanrua/delegate_robodojo.py), [`delegate_dexjoco.py`](cleanrua/delegate_dexjoco.py) |
-| Monitor | Pi0.5 does the task; an MLLM watches it and corrects failures with motion tools. | [`monitor_robodojo.py`](cleanrua/monitor_robodojo.py), [`monitor_dexjoco.py`](cleanrua/monitor_dexjoco.py), [`monitor_check_dexjoco.py`](cleanrua/monitor_check_dexjoco.py) |
+| Direct | <img src="docs/paradigms/direct.svg" width="180" alt="Direct: the MLLM sends a target pose to inverse kinematics, which moves the robot." /><br>An MLLM moves the arms with motion tools. | [`direct_robodojo.py`](cleanrua/direct_robodojo.py)<br>[`direct_jev_robodojo.py`](cleanrua/direct_jev_robodojo.py) |
+| Code | <img src="docs/paradigms/code.svg" width="180" alt="Code: the MLLM sends a program to a Python robot API, which makes many motions." /><br>An MLLM writes Python programs that move the arms through a robot API. | [`code_robodojo.py`](cleanrua/code_robodojo.py)<br>[`code_delegate_robodojo.py`](cleanrua/code_delegate_robodojo.py)<br>[`code_jev_robodojo.py`](cleanrua/code_jev_robodojo.py)<br>[`code_delegate_dexjoco.py`](cleanrua/code_delegate_dexjoco.py) |
+| Delegate | <img src="docs/paradigms/delegate.svg" width="180" alt="Delegate: the MLLM sends a sub-task instruction to a VLA, Pi0.5, which moves the robot." /><br>An MLLM gives sub-task instructions to Pi0.5 and can also move the arms itself. | [`delegate_robodojo.py`](cleanrua/delegate_robodojo.py)<br>[`delegate_dexjoco.py`](cleanrua/delegate_dexjoco.py) |
+| Monitor | <img src="docs/paradigms/monitor.svg" width="180" alt="Monitor: a VLA, Pi0.5, works on the task while the MLLM lets it continue or corrects the robot directly." /><br>Pi0.5 does the task; an MLLM watches it and corrects failures with motion tools. | [`monitor_robodojo.py`](cleanrua/monitor_robodojo.py)<br>[`monitor_dexjoco.py`](cleanrua/monitor_dexjoco.py)<br>[`monitor_check_dexjoco.py`](cleanrua/monitor_check_dexjoco.py) |
 
 ### Cite Us
 

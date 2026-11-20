@@ -10,7 +10,7 @@ Each episode runs `python -m cleanrua.<algorithm>_<benchmark>` with the given ta
 `<output-dir>/<task>__<algorithm>_<benchmark>__<seed>__<time>/`. RoboDojo has one evaluation scene, so every repeat
 uses seed 0; DexJoCo repeat i uses seed `--first-seed` + i. An episode that exceeds `--episode-timeout` or
 reports GPU out-of-memory is killed and recorded as such, so one stuck simulator does not stop the batch.
-Delegate and Monitor need a Pi0.5 server; see examples/installation.md.
+Delegate and Monitor need a Pi0.5 server; see examples/installation_<benchmark>.md.
 """
 import argparse
 import json

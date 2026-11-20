@@ -1,7 +1,7 @@
 # Monitor on DexJoCo: a Pi0.5 action model carries out the task instruction on Franka Panda arms with Allegro hands,
 # while an LLM watches each stretch of its execution and corrects failures with motion tools before handing control
 # back. Following VLA-led supervision such as Spotter (2026) and GPT 6 Astra as an Embodied Policy (2026).
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_dexjoco.md
 import base64
 import inspect
 import io

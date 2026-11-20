@@ -1,6 +1,6 @@
 # Delegate on RoboDojo: an LLM gives a Pi0.5 action model short sub-task instructions through `actor_act`,
 # and can also move two ARX X5 arms itself. Following uni-robot-agent's hybrid mode, without its chunk reviewer.
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_robodojo.md
 import base64
 import inspect
 import io

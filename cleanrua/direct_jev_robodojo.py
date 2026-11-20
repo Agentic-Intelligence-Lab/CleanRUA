@@ -1,7 +1,7 @@
 # Direct control with Jev context compaction on RoboDojo: the Direct agent keeps its whole history, and once that
 # history outgrows a budget, TypeSafe's Jev decides which past tool calls and results are still needed. Kept
 # messages stay verbatim; nothing is summarized. Following Jev compaction (fast-jev-compaction, jev-compactor, 2026).
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_robodojo.md
 import base64
 import inspect
 import io

@@ -1,7 +1,7 @@
 # Code as policies on RoboDojo: an LLM writes Python programs that drive two ARX X5 arms through a small
 # robot API, and sees each program's output, images and state before writing the next.
 # Following Code as Policies (Liang et al., 2022) and its multi-turn successors such as CaP-X.
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_robodojo.md
 import base64
 import inspect
 import io

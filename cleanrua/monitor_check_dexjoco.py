@@ -1,7 +1,7 @@
 # Monitor with checks on DexJoCo: a Pi0.5 action model carries out the task instruction on Franka Panda arms with
 # Allegro hands, while an LLM must judge the progress of each stretch before letting it continue, and must correct
 # the robot with motion tools after judging it stalled or failed. A variant of monitor_dexjoco.py.
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_dexjoco.md
 import base64
 import inspect
 import io

@@ -17,7 +17,8 @@ systems such as [Hi Robot](https://arxiv.org/abs/2502.19417).
 
 ## Usage
 
-Start the Pi0.5 policy server first; see the [installation guide](../get-started/installation.md). Then:
+Start the Pi0.5 policy server first; see the installation guide for [RoboDojo](../get-started/installation_robodojo.md) or
+[DexJoCo](../get-started/installation_dexjoco.md). Then:
 
 ```sh
 python -m cleanrua.delegate_robodojo --native-root /path/to/RoboDojo --task stack_bowls

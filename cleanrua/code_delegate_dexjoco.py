@@ -2,7 +2,7 @@
 # through a small robot API, and the programs can delegate phases to a Pi0.5 action model with `robot.vla`. It sees
 # each program's output, images and state before writing the next. Following PyRUA-Lean (2026), which composes robot
 # primitives and frozen VLA policies in persistent Python cells.
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_dexjoco.md
 import base64
 import inspect
 import io

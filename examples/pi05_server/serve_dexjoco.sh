@@ -12,6 +12,7 @@ PORT=${PORT:-6001}
 GPU=${GPU:-$(nvidia-smi --query-gpu=index,memory.free --format=csv,noheader,nounits | sort -t, -k2 -n -r | head -1 | cut -d, -f1)}
 
 cd "$ROOT/openpi"  # The training-config loader reads config.yaml from here.
+PYTHON=${PYTHON:-$([ -x .venv/bin/python ] && echo .venv/bin/python || echo python)}  # Else the active openpi env.
 echo "DexJoCo Pi0.5 (multi_task) on GPU $GPU, port $PORT, checkpoint $CKPT"
 exec env XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_MEM_FRACTION=0.95 CUDA_VISIBLE_DEVICES="$GPU" \
-  .venv/bin/python scripts/serve_policy.py --port="$PORT" policy:checkpoint --policy.config=multi_task --policy.dir="$CKPT"
+  "$PYTHON" scripts/serve_policy.py --port="$PORT" policy:checkpoint --policy.config=multi_task --policy.dir="$CKPT"

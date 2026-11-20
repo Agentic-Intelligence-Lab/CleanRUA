@@ -1,6 +1,6 @@
 # Delegate on DexJoCo: an LLM gives a Pi0.5 action model short instructions through `actor_act`, and can also move
 # Franka Panda arms with Allegro hands itself. Following uni-robot-agent's hybrid mode, as in delegate_robodojo.py.
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_dexjoco.md
 import base64
 import inspect
 import io

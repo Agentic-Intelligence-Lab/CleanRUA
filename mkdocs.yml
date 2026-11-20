@@ -39,7 +39,9 @@ theme:
 nav:
   - Overview: index.md
   - Get Started:
-      - Installation: get-started/installation.md
+      - Installation:
+          - RoboDojo: get-started/installation_robodojo.md
+          - DexJoCo: get-started/installation_dexjoco.md
       - Evaluation: get-started/evaluation.md
   - RUA Algorithms:
       - Overview: algorithms/overview.md

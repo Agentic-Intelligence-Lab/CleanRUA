@@ -1,7 +1,7 @@
 # Code with Jev context compaction on RoboDojo: the Code agent keeps its whole history, and once that history
 # outgrows a budget, TypeSafe's Jev decides which past programs and results are still needed. Kept messages stay
 # verbatim; nothing is summarized. Following Jev compaction (fast-jev-compaction, jev-compactor, 2026).
-# Setup and usage: examples/installation.md
+# Setup and usage: examples/installation_robodojo.md
 import base64
 import inspect
 import io

@@ -5,13 +5,14 @@ for research, following [CleanRL](https://github.com/vwxyzjn/cleanrl). Each file
 prompt, its tools and the interaction loop. The environments are plain [Gymnasium](https://gymnasium.farama.org/)
 environments.
 
-![Head-camera views of three successful RoboDojo episodes: delegate stacking bowls, direct stacking blocks, and direct lifting scissors](demo.gif){ width="100%" }
+![Successful episodes. Top, RoboDojo head camera: delegate stacking bowls, direct stacking blocks and direct lifting scissors. Bottom, DexJoCo ego camera: delegate clicking the mouse on its pad, delegate hammering the nail and monitor lifting the bucket with the boxed food inside](demo.gif){ width="100%" }
 
 - **Single file.** One algorithm per file, readable top to bottom.
 - **Plain environments.** Tools and models live in the agent, not in the environment.
 - **Official verdicts.** Success always comes from the environment's own check.
 
-Start with the [installation guide](get-started/installation.md), then read the
+Start with the installation guide for [RoboDojo](get-started/installation_robodojo.md) or
+[DexJoCo](get-started/installation_dexjoco.md), then read the
 [algorithms overview](algorithms/overview.md).
 
 ## Citing CleanRUA
