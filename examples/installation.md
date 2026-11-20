@@ -86,7 +86,32 @@ python -m cleanrua.monitor_robodojo --native-root /path/to/RoboDojo --task stack
 `--policy-url` selects another server address (default `ws://localhost:6000`). On a 16 GB GPU, stop the
 server before running Direct or Code: some scenes do not fit next to it.
 
-## 5. Tests
+## 5. DexJoCo
+
+Install [DexJoCo](https://github.com/brave-eai/dexjoco#installation) with its `dexjoco` conda environment, and add
+CleanRUA's requirements to it:
+
+```sh
+conda activate dexjoco
+pip install 'httpx>=0.28,<1' 'pydantic>=2.11,<3' 'tyro>=0.9,<1' 'tensorboardX>=2.6' moviepy
+```
+
+Delegate, Monitor and `code_delegate` use DexJoCo's multi-task Pi0.5 checkpoint
+([DexJoCo-Pi05](https://huggingface.co/DexJoCo/DexJoCo-Pi05)), served by the OpenPI server in DexJoCo's `openpi`
+directory. It uses about 8.6 GB of GPU memory. On a GPU host,
+[`examples/pi05_server/serve_dexjoco.sh`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/examples/pi05_server/serve_dexjoco.sh)
+starts it on port 6001, and `PORT=6001 LOCAL_PORT=6001 examples/pi05_server/tunnel.sh` forwards the port from the
+simulation machine. DexJoCo's server listens on all interfaces, so keep its port closed to other machines.
+
+```sh
+python -m cleanrua.delegate_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+python -m cleanrua.monitor_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+python -m cleanrua.code_delegate_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+```
+
+`--policy-url` defaults to `ws://localhost:6001`. Each prediction takes about 0.12 s through the tunnel.
+
+## 6. Tests
 
 ```sh
 python -m unittest discover -s tests -q                            # CPU: no simulator or model

@@ -14,6 +14,7 @@ Based on [Code as Policies](https://arxiv.org/abs/2209.07753) and its multi-turn
 | [`code_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_robodojo.py) | RoboDojo, two ARX X5 arms |
 | [`code_delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_delegate_robodojo.py) | Programs can also hand short phases to Pi0.5 with `robot.vla` ([below](#code_delegate)) |
 | [`code_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_jev_robodojo.py) | Keeps the whole history and compacts it with Jev ([below](#code_jev)) |
+| [`code_delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_delegate_dexjoco.py) | `code_delegate` on DexJoCo, Panda arms with Allegro hands ([below](#code_delegate)) |
 
 ## Usage
 
@@ -81,6 +82,11 @@ A program can mix it with `robot.move`: run the action model for a chunk, check 
 then correct or retry. It needs the Pi0.5 server of [Delegate](delegate.md). On `put_bottles_into_dustbin` it
 succeeded in 10 decisions and 56k tokens, where Code scored 25 with 386k, but every program there only called
 `robot.vla`.
+
+On DexJoCo the call is `robot.vla(instruction, arms=None, steps=60)`, executed as in
+[Delegate on DexJoCo](delegate.md#on-dexjoco), and `robot.move` takes flange poses. There is no plain Code agent
+for DexJoCo yet: without Pi0.5, a program would have to shape 16 finger joints per hand itself. On `pick_bucket`
+(seed 0, 2026-11-19) it succeeded in 3 programs and 11k tokens, each calling `robot.vla` with the task instruction.
 
 ## `code_jev`
 

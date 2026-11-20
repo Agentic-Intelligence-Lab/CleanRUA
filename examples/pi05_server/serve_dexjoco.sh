@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Start DexJoCo's multi-task Pi0.5 policy server (OpenPI websocket) on a GPU host, listening on localhost only.
+# Start DexJoCo's multi-task Pi0.5 policy server (OpenPI websocket) on a GPU host. OpenPI's server listens on all
+# interfaces, so keep PORT closed to other machines.
 # Usage: serve_dexjoco.sh [DEXJOCO_ROOT] [CHECKPOINT_DIR]
 #   GPU=<index> picks the GPU (default: the one with the most free memory); PORT defaults to 6001.
 # Clients reach it through an SSH tunnel (tunnel.sh with PORT=6001 LOCAL_PORT=6001).

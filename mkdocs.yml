@@ -49,6 +49,7 @@ nav:
       - Monitor: algorithms/monitor.md
   - Environments:
       - RoboDojo: environments/robodojo.md
+      - DexJoCo: environments/dexjoco.md
   - Community:
       - Contribution: contributing.md
 

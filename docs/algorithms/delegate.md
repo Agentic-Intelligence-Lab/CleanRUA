@@ -13,6 +13,7 @@ systems such as [Hi Robot](https://arxiv.org/abs/2502.19417).
 | Variant | Description |
 |---|---|
 | [`delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
+| [`delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 ([below](#on-dexjoco)) |
 
 ## Usage
 
@@ -57,3 +58,20 @@ python -m cleanrua.delegate_robodojo --native-root /path/to/RoboDojo --task stac
 | push_T | 0 | 5 | 35k | 2026-11-17, earlier version |
 
 The earlier version had the same `actor_act` behaviour but two extra, unused tool arguments.
+
+## On DexJoCo
+
+```sh
+python -m cleanrua.delegate_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+```
+
+`actor_act(instruction, active_groups, steps)` runs Pi0.5 for a number of control steps rather than chunks, and
+executes it as DexJoCo's official evaluation does: a prediction covers 30 steps, Pi0.5 is asked again once fewer
+than 24 remain, so every 7 steps, and the overlap of the old and new predictions is blended. Executing a prefix of
+each prediction instead, as on RoboDojo, failed every `pick_bucket` episode we tried. `move` takes flange poses and
+an optional `hand='open'`; only Pi0.5 shapes the fingers.
+
+In one `pick_bucket` episode (seed 0, 2026-11-19) Delegate failed after 12 decisions and 54k tokens: the MLLM
+rewrote the instruction for every call ("Grasp the red bucket by its rim..."), while this Pi0.5 was trained only
+with the tasks' own instructions. Given that instruction, Pi0.5 alone succeeded on this seed in two of three
+runs; it samples fresh noise for every prediction, so the same seed does not give the same outcome.

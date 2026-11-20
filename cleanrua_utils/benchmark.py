@@ -1,11 +1,14 @@
-"""Run CleanRUA agents on RoboDojo tasks, one process per episode, and summarize their result.json files.
+"""Run CleanRUA agents on RoboDojo or DexJoCo tasks, one process per episode, and summarize their result.json files.
 
     python -m cleanrua_utils.benchmark run --algorithms direct code --tasks stack_bowls stack_blocks --repeats 3 \
         --native-root /path/to/RoboDojo
+    python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms delegate monitor --tasks pick_bucket \
+        --repeats 3 --native-root /path/to/dexjoco
     python -m cleanrua_utils.benchmark summary runs/benchmark
 
-Each episode runs `python -m cleanrua.<algorithm>_robodojo` with the given task and writes to
-`<output-dir>/<task>__<algorithm>_robodojo__<seed>__<time>/`. An episode that exceeds `--episode-timeout` or
+Each episode runs `python -m cleanrua.<algorithm>_<benchmark>` with the given task and writes to
+`<output-dir>/<task>__<algorithm>_<benchmark>__<seed>__<time>/`. RoboDojo has one evaluation scene, so every repeat
+uses seed 0; DexJoCo repeat i uses seed i. An episode that exceeds `--episode-timeout` or
 reports GPU out-of-memory is killed and recorded as such, so one stuck simulator does not stop the batch.
 Delegate and Monitor need a Pi0.5 server; see examples/installation.md.
 """
@@ -29,8 +32,10 @@ def run(args) -> None:
                 for algorithm in args.algorithms]
     for number, (task, algorithm, repeat) in enumerate(episodes, 1):
         log = logs / f'{task}__{algorithm}__{repeat}__{int(time.time())}.log'
-        command = [sys.executable, '-m', f'cleanrua.{algorithm}_robodojo', '--native-root', str(args.native_root),
+        command = [sys.executable, '-m', f'cleanrua.{algorithm}_{args.benchmark}', '--native-root', str(args.native_root),
                    '--task', task, '--output-dir', str(args.output_dir), *args.extra]
+        if args.benchmark == 'dexjoco':
+            command += ['--seed', str(repeat)]
         print(f'[{number}/{len(episodes)}] {algorithm} {task} repeat {repeat}', flush=True)
         start, outcome = time.time(), None
         with log.open('w') as output:
@@ -44,7 +49,7 @@ def run(args) -> None:
                 if outcome:
                     process.kill()
                     process.wait()
-        new = [path for path in args.output_dir.glob(f'{task}__{algorithm}_robodojo__*/result.json')
+        new = [path for path in args.output_dir.glob(f'{task}__{algorithm}_{args.benchmark}__*/result.json')
                if path.stat().st_mtime >= start]
         result = json.loads(new[0].read_text()) if new else {}
         print(f'    {outcome or f"exit {process.returncode}"} after {time.time() - start:.0f} s:',
@@ -123,7 +128,7 @@ def export(args) -> None:
     data['tasks'] = args.tasks
     data['algorithms'] = args.algorithms
     data['episodes'] = [
-        {'algorithm': r['algorithm'].removesuffix('_robodojo'), 'task': r['task'], 'success': r['success'],
+        {'algorithm': re.sub('_(robodojo|dexjoco)$', '', r['algorithm']), 'task': r['task'], 'success': r['success'],
          'score': r['score'], 'decisions': r['decisions'], 'tokens': r['total_tokens'],
          'native_steps': r['native_steps'], 'step_limit': r['step_limit'], 'elapsed_s': r['elapsed_s'],
          'model_s': r['model_s'], 'stop_reason': r['stop_reason'], 'finish': r['agent_finished'],
@@ -141,6 +146,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest='command', required=True)
     runner = commands.add_parser('run', help='run episodes')
+    runner.add_argument('--benchmark', choices=('robodojo', 'dexjoco'), default='robodojo')
     runner.add_argument('--algorithms', nargs='+', choices=ALGORITHMS, required=True)
     runner.add_argument('--tasks', nargs='+', required=True)
     runner.add_argument('--repeats', type=int, default=1)

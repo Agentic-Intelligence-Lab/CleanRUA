@@ -23,6 +23,7 @@ import gymnasium as gym
 import numpy as np
 import yaml
 from gymnasium import spaces
+from scipy.spatial.transform import Rotation
 
 # Native episode length of each task, in control steps.
 STEP_LIMITS = {'bimanual_assembly': 1500, 'bimanual_hanoi': 1500, 'bimanual_microwave_cook': 1100,
@@ -66,6 +67,11 @@ class DexJoCoEnv(gym.Env):
         if seed is not None:  # The same seed always gives the same scene.
             self._seed_rngs(seed)
         native, _ = self.native.reset()
+        if self.task == 'click_mouse':  # As in the official evaluation: first raise the hand to the recorded start pose.
+            start = [-.44294, 1.3729e-06, 1.517, *Rotation.from_rotvec([-3.14156462, -6.91584035e-05, -1.40317984e-03])
+                     .as_quat(scalar_first=True), *np.eye(16)[12] * .263]
+            for _ in range(30):
+                native, *_ = self.native.step(np.array(start))
         self.steps, self.success = 0, False
         state = native['state']
         self._hand_command = {arm: state[self._hand_slice(arm)].copy() for arm in self.arms}
@@ -120,7 +126,8 @@ class DexJoCoEnv(gym.Env):
                          'hand_command': self._hand_command[arm].copy()}
         model, data, cameras = self.native.unwrapped.model, self.native.unwrapped.data, {}
         height, width = model.vis.global_.offheight, model.vis.global_.offwidth
-        names = {'front': 'front', 'ego_left': 'left', 'ego_right': 'right', 'wrist': 'handcam_rgb'}
+        names = {'ego': 'back', 'ego_left': 'left', 'ego_right': 'right', 'wrist': 'handcam_rgb',
+                 'wrist_left': 'handcam_rgb_left', 'wrist_right': 'handcam_rgb_right'}
         for name in self.cameras:  # Calibration from the MuJoCo cameras: their frames look along -z with y up.
             camera = model.camera(names.get(name, name)).id
             focal = height / 2 / np.tan(np.deg2rad(model.cam_fovy[camera]) / 2)

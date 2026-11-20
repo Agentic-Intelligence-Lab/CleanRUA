@@ -13,6 +13,7 @@ Based on VLA-led supervision such as [Spotter](https://arxiv.org/abs/2609.36808)
 | Variant | Description |
 |---|---|
 | [`monitor_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
+| [`monitor_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 |
 
 ## Usage
 
@@ -53,3 +54,13 @@ python -m cleanrua.monitor_robodojo --native-root /path/to/RoboDojo --task stack
 
 In both episodes the MLLM called `run_policy` with 8 chunks each time and never corrected the robot. In
 `stack_blocks`, Pi0.5 had not finished when the 550-step native limit ran out.
+
+## On DexJoCo
+
+```sh
+python -m cleanrua.monitor_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+```
+
+`run_policy(steps)` runs Pi0.5 for 1 to 300 control steps (default 60), replanning and blending as described for
+[Delegate on DexJoCo](delegate.md#on-dexjoco). On `pick_bucket` (seed 0, 2026-11-19) it succeeded with two
+`run_policy` calls, 317 steps and 9k tokens.
