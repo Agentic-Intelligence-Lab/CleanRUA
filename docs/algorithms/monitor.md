@@ -14,6 +14,7 @@ Based on VLA-led supervision such as [Spotter](https://arxiv.org/abs/2609.36808)
 |---|---|
 | [`monitor_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
 | [`monitor_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 |
+| [`monitor_check_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_check_dexjoco.py) | Every `run_policy` call first judges progress; a negative judgment requires a correction ([below](#monitor_check)) |
 
 ## Usage
 
@@ -65,3 +66,29 @@ python -m cleanrua.monitor_dexjoco --native-root /path/to/dexjoco --task pick_bu
 [Delegate on DexJoCo](delegate.md#on-dexjoco). In the first round (2026-11-20, five single-arm tasks, seeds 0
 to 9) it succeeded in 31 of 50 episodes, close to Pi0.5 alone (28 of 50), with the fewest tokens: in 175 calls the
 MLLM never corrected the robot and only let Pi0.5 continue.
+
+## `monitor_check`
+
+Monitor's MLLM never corrected the robot on DexJoCo, so this variant makes it judge. `run_policy` takes two more
+required arguments, `progress` (`started`, `progressing`, `stalled` or `failed`) and `evidence`, the judgment of the
+stretch since the previous call. After `stalled` or `failed`, `run_policy` is refused until `move` has corrected
+the robot, for example by raising the open hand above the object so Pi0.5 can retry.
+
+```sh
+python -m cleanrua.monitor_check_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+```
+
+It made things worse (2026-11-20, `click_mouse`, `pick_bucket` and `fold_glasses`, seeds 0 to 4):
+
+| | Monitor | `monitor_check` |
+|---|---|---|
+| Successes | **9 of 15** | 3 of 15 |
+| Tokens per episode | **18k** | 46k |
+| Decisions per episode | 4.3 | 9.9 |
+
+On the same seeds, `monitor_check` succeeded 3 times where Monitor failed and failed 9 times where Monitor
+succeeded (exact McNemar p = 0.15). The MLLM judged 31 of 105 stretches stalled and made 48 corrections, often
+also after judging progress. Each correction moved the hand away from where Pi0.5 was working, and Pi0.5 then had to
+start the grasp again; on `pick_bucket` it never recovered. Two `finish` calls also claimed successes the official
+check rejected. With an action model that only this MLLM can steer by moving the wrist, frequent corrections cost
+more than they save.
