@@ -62,5 +62,6 @@ python -m cleanrua.monitor_dexjoco --native-root /path/to/dexjoco --task pick_bu
 ```
 
 `run_policy(steps)` runs Pi0.5 for 1 to 300 control steps (default 60), replanning and blending as described for
-[Delegate on DexJoCo](delegate.md#on-dexjoco). On `pick_bucket` (seed 0, 2026-11-19) it succeeded with two
-`run_policy` calls, 317 steps and 9k tokens.
+[Delegate on DexJoCo](delegate.md#on-dexjoco). In the first round (2026-11-20, five single-arm tasks, seeds 0
+to 2) it succeeded in 9 of 15 episodes, as often as Pi0.5 alone, with the fewest tokens: in all 18 episodes,
+including `bimanual_assembly`, the MLLM only called `run_policy` and never corrected the robot.

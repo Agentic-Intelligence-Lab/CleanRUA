@@ -25,6 +25,7 @@
   --rua-delegate: #eb6834;
   --rua-code: #1baf7a;
   --rua-direct: #eda100;
+  --rua-code_delegate: #e87ba4;  /* slot 5; never drawn next to Delegate's orange */
   --rua-ink: #0b0b0b;
   --rua-ink-2: #52514e;
   --rua-muted: #898781;
@@ -38,6 +39,7 @@
   --rua-delegate: #d95926;
   --rua-code: #199e70;
   --rua-direct: #c98500;
+  --rua-code_delegate: #d55181;
   --rua-ink: #f0efec;
   --rua-ink-2: #c3c2b7;
   --rua-grid: #232a3a;
@@ -57,6 +59,7 @@
 .rua-delegate { fill: var(--rua-delegate); }
 .rua-code { fill: var(--rua-code); }
 .rua-direct { fill: var(--rua-direct); }
+.rua-code_delegate { fill: var(--rua-code_delegate); }
 .rua-hit { outline: none; }
 .rua-hit.rua-active .rua-bar { filter: brightness(1.12); }
 .rua-hit:focus-visible rect { stroke: var(--rua-ink-2); stroke-width: 1; }

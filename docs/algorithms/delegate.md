@@ -71,7 +71,7 @@ than 24 remain, so every 7 steps, and the overlap of the old and new predictions
 each prediction instead, as on RoboDojo, failed every `pick_bucket` episode we tried. `move` takes flange poses and
 an optional `hand='open'`; only Pi0.5 shapes the fingers.
 
-In one `pick_bucket` episode (seed 0, 2026-11-19) Delegate failed after 12 decisions and 54k tokens: the MLLM
-rewrote the instruction for every call ("Grasp the red bucket by its rim..."), while this Pi0.5 was trained only
-with the tasks' own instructions. Given that instruction, Pi0.5 alone succeeded on this seed in two of three
-runs; it samples fresh noise for every prediction, so the same seed does not give the same outcome.
+The MLLM usually starts with the task instruction and then gives step instructions, such as "Lower the held
+boxed food into the red bucket and release it", although this Pi0.5 was trained only with the tasks' own
+instructions. In the first round on five single-arm tasks (2026-11-20, seeds 0 to 2) it succeeded in 11 of 14
+valid episodes, against 8 of 15 for Pi0.5 alone with the task instruction.

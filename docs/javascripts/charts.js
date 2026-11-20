@@ -1,7 +1,7 @@
 /* Small bar charts of CleanRUA benchmark results, drawn as plain SVG from a JSON file of episodes.
    Each <div class="rua-chart" data-src="..." data-chart="..."> becomes one chart with one bar per algorithm. */
 (function () {
-  const NAMES = { monitor: 'Monitor', delegate: 'Delegate', code: 'Code', direct: 'Direct' };
+  const NAMES = { monitor: 'Monitor', delegate: 'Delegate', code: 'Code', direct: 'Direct', code_delegate: 'code_delegate' };
   const SVG = 'http://www.w3.org/2000/svg';
   const cache = {};
 
@@ -55,8 +55,9 @@
     });
     const top = spec.top || niceMax(Math.max(...bars.map((b) => b.value || 0)) * 1.15);
 
-    const bar = 22, slot = 48, left = 34, plotTop = 16, plotHeight = 120;
-    const width = left + slot * bars.length + 4, height = plotTop + plotHeight + 18;
+    // Every chart has the same width, so all render at one scale; fewer bars get wider slots.
+    const bar = 22, left = 34, width = 230, plotTop = 16, plotHeight = 120, height = plotTop + plotHeight + 18;
+    const slot = (width - left - 4) / bars.length;
     const y = (value) => plotTop + plotHeight - (value / top) * plotHeight;
 
     root.textContent = '';

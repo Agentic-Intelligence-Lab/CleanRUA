@@ -127,11 +127,11 @@ def export(args) -> None:
         data[key] = int(value) if re.fullmatch(r'-?\d+', value) else value
     data['tasks'] = args.tasks
     data['algorithms'] = args.algorithms
-    data['episodes'] = [
+    data['episodes'] = [  # An episode whose first model request failed has no usage fields.
         {'algorithm': re.sub('_(robodojo|dexjoco)$', '', r['algorithm']), 'task': r['task'], 'success': r['success'],
-         'score': r['score'], 'decisions': r['decisions'], 'tokens': r['total_tokens'],
+         'score': r['score'], 'decisions': r['decisions'], 'tokens': r.get('total_tokens', 0),
          'native_steps': r['native_steps'], 'step_limit': r['step_limit'], 'elapsed_s': r['elapsed_s'],
-         'model_s': r['model_s'], 'stop_reason': r['stop_reason'], 'finish': r['agent_finished'],
+         'model_s': r.get('model_s', 0.), 'stop_reason': r['stop_reason'], 'finish': r['agent_finished'],
          'invalid': r['stop_reason'].startswith('model_error')}
         for r in load(args.output_dir)]
     data['not_run'] = []

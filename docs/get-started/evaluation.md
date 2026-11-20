@@ -40,3 +40,35 @@ and Monitor.
 
     The episodes behind these charts are in
     [`robodojo-round1.json`](../assets/results/robodojo-round1.json).
+
+## DexJoCo
+
+Round 1 (2026-11-20, commit `c64fe56`): 6 tasks, seeds 0 to 2, GPT-6 Astra, DexJoCo's multi-task Pi0.5 for
+every algorithm.
+
+<div class="rua-row">
+<div class="rua-chart" data-src="../../assets/results/dexjoco-round1.json" data-chart="success"></div>
+<div class="rua-chart" data-src="../../assets/results/dexjoco-round1.json" data-chart="tokens"></div>
+<div class="rua-chart" data-src="../../assets/results/dexjoco-round1.json" data-chart="tokens_per_success"></div>
+</div>
+
+??? note "Observations"
+    Tasks: `click_mouse`, `hammer_nail`, `water_plant`, `pick_bucket` and `fold_glasses` with one arm, and
+    `bimanual_assembly` with two. Three seeds per task–algorithm pair, 54 episodes; two episodes stopped by a
+    provider timeout were run again. With 18 episodes per algorithm the differences below are tendencies, not
+    significant results. DexJoCo has no partial credit, so there is no score chart.
+
+    - **Pi0.5 alone is the reference.** With the task instruction and no MLLM, it succeeded in 8 of 15
+      single-arm episodes on the same seeds (2026-11-19) and in none of `bimanual_assembly`.
+    - **Delegate did best**: 12 of 15 single-arm episodes. The MLLM usually starts with the task instruction and
+      then gives step instructions such as "Lower the held boxed food into the red bucket and release it", even
+      though this Pi0.5 was trained only with whole task instructions.
+    - **Monitor never corrected Pi0.5.** All its calls were `run_policy`, so it performed like Pi0.5 alone
+      (9 of 15) with the fewest tokens.
+    - **`code_delegate` hardly used code**: 8 of 15. Almost every program only called `robot.vla`, and twice on
+      `pick_bucket` the MLLM called `finish` with the bucket lifted, but not as high as the official check asks.
+    - **No algorithm solved `bimanual_assembly`.** Pi0.5 could not grasp the peg, and rewording did not help;
+      these episodes used the most tokens, 38k to 78k each.
+
+    The episodes behind these charts are in
+    [`dexjoco-round1.json`](../assets/results/dexjoco-round1.json).
