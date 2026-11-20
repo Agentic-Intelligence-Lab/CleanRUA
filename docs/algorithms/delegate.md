@@ -73,5 +73,5 @@ an optional `hand='open'`; only Pi0.5 shapes the fingers.
 
 The MLLM usually starts with the task instruction and then gives step instructions, such as "Lower the held
 boxed food into the red bucket and release it", although this Pi0.5 was trained only with the tasks' own
-instructions. In the first round on five single-arm tasks (2026-11-20, seeds 0 to 2) it succeeded in 11 of 14
-valid episodes, against 8 of 15 for Pi0.5 alone with the task instruction.
+instructions. In the first round on five single-arm tasks (2026-11-20, seeds 0 to 9) it succeeded in 36 of 50
+episodes, against 28 of 50 for Pi0.5 alone with the task instruction on the same seeds (exact McNemar p = 0.10).

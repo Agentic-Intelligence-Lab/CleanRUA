@@ -8,7 +8,7 @@
 
 Each episode runs `python -m cleanrua.<algorithm>_<benchmark>` with the given task and writes to
 `<output-dir>/<task>__<algorithm>_<benchmark>__<seed>__<time>/`. RoboDojo has one evaluation scene, so every repeat
-uses seed 0; DexJoCo repeat i uses seed i. An episode that exceeds `--episode-timeout` or
+uses seed 0; DexJoCo repeat i uses seed `--first-seed` + i. An episode that exceeds `--episode-timeout` or
 reports GPU out-of-memory is killed and recorded as such, so one stuck simulator does not stop the batch.
 Delegate and Monitor need a Pi0.5 server; see examples/installation.md.
 """
@@ -35,7 +35,7 @@ def run(args) -> None:
         command = [sys.executable, '-m', f'cleanrua.{algorithm}_{args.benchmark}', '--native-root', str(args.native_root),
                    '--task', task, '--output-dir', str(args.output_dir), *args.extra]
         if args.benchmark == 'dexjoco':
-            command += ['--seed', str(repeat)]
+            command += ['--seed', str(args.first_seed + repeat)]
         print(f'[{number}/{len(episodes)}] {algorithm} {task} repeat {repeat}', flush=True)
         start, outcome = time.time(), None
         with log.open('w') as output:
@@ -150,6 +150,7 @@ if __name__ == '__main__':
     runner.add_argument('--algorithms', nargs='+', choices=ALGORITHMS, required=True)
     runner.add_argument('--tasks', nargs='+', required=True)
     runner.add_argument('--repeats', type=int, default=1)
+    runner.add_argument('--first-seed', type=int, default=0, help='DexJoCo seed of the first repeat')
     runner.add_argument('--native-root', type=Path, required=True)
     runner.add_argument('--output-dir', type=Path, default=Path('runs/benchmark'))
     runner.add_argument('--episode-timeout', type=float, default=4200., help='seconds before an episode is killed')

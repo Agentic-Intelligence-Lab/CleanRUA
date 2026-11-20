@@ -86,9 +86,9 @@ succeeded in 10 decisions and 56k tokens, where Code scored 25 with 386k, but ev
 On DexJoCo the call is `robot.vla(instruction, arms=None, steps=60)`, executed as in
 [Delegate on DexJoCo](delegate.md#on-dexjoco), and `robot.move` takes flange poses. There is no plain Code agent
 for DexJoCo yet: without Pi0.5, a program would have to shape 16 finger joints per hand itself. In the first round
-(2026-11-20, five single-arm tasks, seeds 0 to 2) it succeeded in 8 of 15 episodes, against 12 for Delegate: only 8
-of its 117 programs called `robot.move`, and twice on `pick_bucket` the MLLM called `finish` with the bucket lifted
-less than the official check requires.
+(2026-11-20, five single-arm tasks, seeds 0 to 9) it succeeded in 28 of 50 episodes, as often as Pi0.5 alone and
+against 36 for Delegate: only 16 of its 288 programs called `robot.move`, and 5 of its 8 `finish` calls claimed
+successes the official check rejected, such as a bucket lifted less than the required 15 cm.
 
 ## `code_jev`
 

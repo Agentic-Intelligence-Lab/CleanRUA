@@ -43,8 +43,8 @@ and Monitor.
 
 ## DexJoCo
 
-Round 1 (2026-11-20, commit `c64fe56`): 6 tasks, seeds 0 to 2, GPT-6 Astra, DexJoCo's multi-task Pi0.5 for
-every algorithm.
+Round 1 (2026-11-20, commit `c64fe56`): 5 single-arm tasks, seeds 0 to 9, GPT-6 Astra, DexJoCo's multi-task Pi0.5
+for every algorithm.
 
 <div class="rua-row">
 <div class="rua-chart" data-src="../../assets/results/dexjoco-round1.json" data-chart="success"></div>
@@ -53,22 +53,25 @@ every algorithm.
 </div>
 
 ??? note "Observations"
-    Tasks: `click_mouse`, `hammer_nail`, `water_plant`, `pick_bucket` and `fold_glasses` with one arm, and
-    `bimanual_assembly` with two. Three seeds per task–algorithm pair, 54 episodes; two episodes stopped by a
-    provider timeout were run again. With 18 episodes per algorithm the differences below are tendencies, not
-    significant results. DexJoCo has no partial credit, so there is no score chart.
+    Tasks: `click_mouse`, `hammer_nail`, `water_plant`, `pick_bucket` and `fold_glasses`; 50 episodes per
+    algorithm on the same seeds. Six episodes stopped by provider errors were run again. DexJoCo has no partial
+    credit, so there is no score chart.
 
-    - **Pi0.5 alone is the reference.** With the task instruction and no MLLM, it succeeded in 8 of 15
-      single-arm episodes on the same seeds (2026-11-19) and in none of `bimanual_assembly`.
-    - **Delegate did best**: 12 of 15 single-arm episodes. The MLLM usually starts with the task instruction and
-      then gives step instructions such as "Lower the held boxed food into the red bucket and release it", even
-      though this Pi0.5 was trained only with whole task instructions.
-    - **Monitor never corrected Pi0.5.** All its calls were `run_policy`, so it performed like Pi0.5 alone
-      (9 of 15) with the fewest tokens.
-    - **`code_delegate` hardly used code**: 8 of 15. Almost every program only called `robot.vla`, and twice on
-      `pick_bucket` the MLLM called `finish` with the bucket lifted, but not as high as the official check asks.
-    - **No algorithm solved `bimanual_assembly`.** Pi0.5 could not grasp the peg, and rewording did not help;
-      these episodes used the most tokens, 38k to 78k each.
+    - **Pi0.5 alone is the reference.** With the task instruction and no MLLM, it succeeded in 28 of 50 episodes
+      on the same seeds. It already solves most `water_plant` and `hammer_nail` scenes, so most differences
+      come from `click_mouse`, `pick_bucket` and `fold_glasses`.
+    - **Delegate did best**, 36 of 50, and helped most on `click_mouse` (9 against 5). On the same seeds it
+      succeeded 13 times where Pi0.5 alone failed and failed 5 times where Pi0.5 alone succeeded; with 50
+      episodes this is suggestive but not significant (exact McNemar p = 0.10). The MLLM usually starts with the
+      task instruction and then gives step instructions such as "Lower the held boxed food into the red bucket
+      and release it", even though this Pi0.5 was trained only with whole task instructions.
+    - **Monitor performed like Pi0.5 alone** (31 of 50) with the fewest tokens. In 175 calls it never corrected
+      the robot; it only let Pi0.5 continue.
+    - **`code_delegate` did not beat Pi0.5 alone** (28 of 50) and used the most tokens per success. Only 16 of
+      its 288 programs called `robot.move`, and 5 of its 8 `finish` calls claimed successes the official check
+      rejected, for example a bucket lifted less than the required 15 cm.
+    - **No algorithm solved `bimanual_assembly`** in three seeds each, and Pi0.5 alone fails it too. It is not
+      in the charts.
 
     The episodes behind these charts are in
     [`dexjoco-round1.json`](../assets/results/dexjoco-round1.json).
