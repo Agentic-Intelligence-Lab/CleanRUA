@@ -66,10 +66,10 @@ class Args:
     """websocket address of DexJoCo's OpenPI server for the multi-task Pi0.5 policy"""
 
     # Memory
-    playbook_dir: Path = Path('runs/playbooks')
-    """directory of playbooks, one `<task>.md` per task, read at the start of an episode"""
-    update_playbook: bool = True
-    """rewrite the task's playbook after the episode; turn off to evaluate a frozen playbook"""
+    memory_dir: Path = Path('runs/memory')
+    """memory directory holding one playbook per task, `<task>.md`, read at the start of an episode"""
+    learn: bool = True
+    """rewrite the task's playbook after the episode; --no-learn evaluates a frozen playbook"""
     playbook_chars: int = 3000
     """maximum length of a playbook"""
     reflection_max_tokens: int = 2048
@@ -445,7 +445,7 @@ if __name__ == '__main__':
     try:
         observation, info = env.reset(seed=args.seed)
         home = {name: np.round(arm['pose'], 4).tolist() for name, arm in observation['arms'].items()}
-        playbook_path = args.playbook_dir / f'{args.task}.md'
+        playbook_path = args.memory_dir / f'{args.task}.md'
         playbook = playbook_path.read_text() if playbook_path.exists() else ''
         instruction = info['instruction']  # `info` is replaced by every step's.
         task = (f'Task: {instruction}\nInitial flange poses: {json.dumps(home)}'
@@ -504,7 +504,7 @@ if __name__ == '__main__':
 
         verdict = env.unwrapped.evaluate()  # Official outcome; never shown to the agent, only to the reflection.
         reflection_error = None
-        if args.update_playbook and not stop_reason.startswith('model_error'):
+        if args.learn and not stop_reason.startswith('model_error'):
             outcome = (f'Official outcome: {"success" if verdict["success"] else "failure"}. '
                        f'Stop reason: {stop_reason}. '
                        f'{observation["native_steps"]} of {agent.step_limit} control steps used. '

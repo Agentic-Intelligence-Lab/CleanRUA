@@ -25,6 +25,9 @@ import yaml
 from gymnasium import spaces
 from scipy.spatial.transform import Rotation
 
+# Our camera names, from configs/multi_task, mapped to MuJoCo camera names where they differ.
+CAMERA_NAMES = {'ego': 'back', 'ego_left': 'left', 'ego_right': 'right', 'wrist': 'handcam_rgb',
+                'wrist_left': 'handcam_rgb_left', 'wrist_right': 'handcam_rgb_right'}
 # Native episode length of each task, in control steps.
 STEP_LIMITS = {'bimanual_assembly': 1500, 'bimanual_hanoi': 1500, 'bimanual_microwave_cook': 1100,
                'bimanual_photograph': 1000, 'bimanual_unlock_ipad': 1200, 'click_mouse': 1200, 'fold_glasses': 1200,
@@ -100,6 +103,15 @@ class DexJoCoEnv(gym.Env):
         return {**{key: self._native[name] for key, name in self.config['camera_mapping'].items()},
                 'state': np.concatenate([state, np.zeros(46 - len(state))])}
 
+    def depth(self, camera: str) -> np.ndarray:
+        """Depth of each pixel of `camera` along its optical axis, in metres, rendered on demand from the current state.
+        It aligns with the camera's 'rgb' image and calibration."""
+        native, model = self.native.unwrapped, self.native.unwrapped.model
+        viewer = getattr(native, '_viewer', None) or native._mj_viewer  # water_plant names its renderer differently.
+        buffer = viewer.render(render_mode='depth_array', camera_id=model.camera(CAMERA_NAMES.get(camera, camera)).id)
+        near, far = model.vis.map.znear * model.stat.extent, model.vis.map.zfar * model.stat.extent
+        return (near / (1 - buffer * (1 - near / far))).astype(np.float32)  # OpenGL depth buffer to metres.
+
     def evaluate(self) -> dict:
         """Official verdict: DexJoCo tasks have no partial credit, so the score is 100 or 0."""
         return {'success': self.success, 'score': 100. if self.success else 0.}
@@ -126,10 +138,8 @@ class DexJoCoEnv(gym.Env):
                          'hand_command': self._hand_command[arm].copy()}
         model, data, cameras = self.native.unwrapped.model, self.native.unwrapped.data, {}
         height, width = model.vis.global_.offheight, model.vis.global_.offwidth
-        names = {'ego': 'back', 'ego_left': 'left', 'ego_right': 'right', 'wrist': 'handcam_rgb',
-                 'wrist_left': 'handcam_rgb_left', 'wrist_right': 'handcam_rgb_right'}
         for name in self.cameras:  # Calibration from the MuJoCo cameras: their frames look along -z with y up.
-            camera = model.camera(names.get(name, name)).id
+            camera = model.camera(CAMERA_NAMES.get(name, name)).id
             focal = height / 2 / np.tan(np.deg2rad(model.cam_fovy[camera]) / 2)
             pose = np.eye(4)
             pose[:3, :3] = data.cam_xmat[camera].reshape(3, 3) @ np.diag([1., -1., -1.])

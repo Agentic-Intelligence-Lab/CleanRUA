@@ -15,6 +15,7 @@ Based on [Code as Policies](https://arxiv.org/abs/2209.07753) and its multi-turn
 | [`code_delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_delegate_robodojo.py) | Programs can also hand short phases to Pi0.5 with `robot.vla` ([below](#code_delegate)) |
 | [`code_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_jev_robodojo.py) | Keeps the whole history and compacts it with Jev ([below](#code_jev)) |
 | [`code_delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_delegate_dexjoco.py) | `code_delegate` on DexJoCo, Panda arms with Allegro hands ([below](#code_delegate)) |
+| [`code_explore_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_explore_dexjoco.py) | Learns a task over episodes and compiles it into one program that runs alone ([below](#code_explore)) |
 
 ## Usage
 
@@ -110,3 +111,34 @@ history:
 
 Jev itself cost about $0.01 per episode and 0.5 seconds per compaction. One episode per cell cannot separate the
 method from sampling variance; repeats are planned.
+
+## `code_explore`
+
+Learns a DexJoCo task by exploring it and compiles what worked into one robot program, following
+[RAX](https://github.com/robot-agent-exploration/rax). There is no action model: programs command the flange poses
+and all 16 finger joints, and see each camera's depth.
+
+| Name | What it does |
+|---|---|
+| `robot.move(targets, max_steps)` | As above, and `hand` takes 16 finger joint targets, at most 0.1 rad per step within the joint limits |
+| `robot.camera(name)` | The camera's image, depth in metres and calibration |
+| `robot.point(name, u, v)` | World position of the surface seen at a pixel |
+
+Each learning episode first rehearses the current `controller.py` without the MLLM. If the task is not done, the
+MLLM explores from there with programs. Afterwards it rewrites `notes.md` and `controller.py` from the episode, its
+final images and the official outcome. A program that succeeds in two rehearsals in a row is copied to
+`verified.py`. A test episode runs only the frozen program, so it uses no tokens.
+
+```sh
+python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms code_explore --tasks click_mouse \
+  --seeds 20-25 --memory runs/memory --learn --native-root /path/to/dexjoco --output-dir runs/train
+python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms code_explore --tasks click_mouse \
+  --seeds 0-9 --memory runs/memory --native-root /path/to/dexjoco --output-dir runs/test
+```
+
+A first pilot did not learn `click_mouse` (2026-11-21). In six learning episodes the program learned to find the
+pad and the mouse from colour and depth and to push the mouse with one finger, but each push moved it only 1 to
+4 cm. No rehearsal succeeded, and the last program solved none of seeds 0 to 9, where Pi0.5 alone solved 5 and
+Delegate 9. Learning used 579k tokens. From the third episode on, the rehearsal took 600 to 870 of the 1,170 steps
+and left the MLLM 5 to 10 decisions to explore. RAX explores with scene resets, goal images and 16 to 64
+episodes per task.

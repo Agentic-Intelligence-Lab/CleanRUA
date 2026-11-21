@@ -8,6 +8,13 @@ hide:
 Every algorithm runs on the same tasks with the same model and budget. The environment's own step limit ends each
 episode, and its official check decides success.
 
+??? note "Learning across episodes"
+    Agents that learn from earlier episodes keep what they learn in a memory directory and are evaluated in two
+    runs of `cleanrua_utils.benchmark`. The learning run, with `--memory DIR --learn`, logs every learning episode's
+    seed, outcome and cost to `DIR/learning.jsonl`. The test run, with `--memory DIR`, freezes a copy of the
+    directory with its file hashes, refuses test seeds that a task learned from, and stops if the copy changes.
+    `summary` then reports the learning cost behind the frozen memory next to the test results.
+
 ## RoboDojo
 
 Round 1 (2026-11-18, commit `64a2d92`): 8 tasks, one episode each, seed 0, GPT-6 Astra, Pi0.5 for Delegate

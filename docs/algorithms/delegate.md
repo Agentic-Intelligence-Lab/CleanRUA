@@ -82,14 +82,18 @@ episodes, against 28 of 50 for Pi0.5 alone with the task instruction on the same
 
 Delegate on DexJoCo with a playbook that carries lessons across episodes, following
 [Reflexion](https://arxiv.org/abs/2303.11366) and the playbooks of [RobotUse](https://github.com/robotuse-team/RobotUse).
-Each task has its own playbook, `<playbook-dir>/<task>.md`, which is added to the task text at the start of an
+Each task has its own playbook, `<memory-dir>/<task>.md`, which is added to the task text at the start of an
 episode. After the episode, the MLLM rewrites it from the episode's tool calls and results, the final images and
 the official outcome, which the agent itself never sees. Lessons must say how much evidence they have and contain
-no coordinates. `--no-update-playbook` evaluates a frozen playbook; the reflection's tokens count towards the
-episode.
+no coordinates. `--no-learn` evaluates a frozen playbook; the reflection's tokens count towards the episode.
+To learn on some seeds and test on others, use the benchmark runner, which keeps the two apart
+(see [Evaluation](../get-started/evaluation.md)):
 
 ```sh
-python -m cleanrua.delegate_memory_dexjoco --native-root /path/to/dexjoco --task pick_bucket --playbook-dir runs/playbooks
+python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms delegate_memory --tasks pick_bucket \
+  --seeds 10-14 --memory runs/memory --learn --native-root /path/to/dexjoco --output-dir runs/train
+python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms delegate_memory --tasks pick_bucket \
+  --seeds 0-9 --memory runs/memory --native-root /path/to/dexjoco --output-dir runs/test
 ```
 
 It made Delegate worse (2026-11-21). Playbooks were learned on seeds 10 to 14 of `click_mouse`, `pick_bucket` and
