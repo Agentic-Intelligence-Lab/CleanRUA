@@ -22,7 +22,8 @@ import sys
 import time
 from pathlib import Path
 
-ALGORITHMS = ('direct', 'code', 'delegate', 'monitor', 'code_delegate', 'code_jev', 'direct_jev', 'monitor_check')
+ALGORITHMS = ('direct', 'code', 'delegate', 'monitor', 'code_delegate', 'code_jev', 'direct_jev', 'monitor_check',
+              'delegate_memory')
 
 
 def run(args) -> None:

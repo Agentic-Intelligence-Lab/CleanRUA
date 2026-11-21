@@ -14,6 +14,7 @@ systems such as [Hi Robot](https://arxiv.org/abs/2502.19417).
 |---|---|
 | [`delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
 | [`delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 ([below](#on-dexjoco)) |
+| [`delegate_memory_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_memory_dexjoco.py) | Keeps a playbook per task across episodes ([below](#delegate_memory)) |
 
 ## Usage
 
@@ -76,3 +77,32 @@ The MLLM usually starts with the task instruction and then gives step instructio
 boxed food into the red bucket and release it", although this Pi0.5 was trained only with the tasks' own
 instructions. In the first round on five single-arm tasks (2026-11-20, seeds 0 to 9) it succeeded in 36 of 50
 episodes, against 28 of 50 for Pi0.5 alone with the task instruction on the same seeds (exact McNemar p = 0.10).
+
+## `delegate_memory`
+
+Delegate on DexJoCo with a playbook that carries lessons across episodes, following
+[Reflexion](https://arxiv.org/abs/2303.11366) and the playbooks of [RobotUse](https://github.com/robotuse-team/RobotUse).
+Each task has its own playbook, `<playbook-dir>/<task>.md`, which is added to the task text at the start of an
+episode. After the episode, the MLLM rewrites it from the episode's tool calls and results, the final images and
+the official outcome, which the agent itself never sees. Lessons must say how much evidence they have and contain
+no coordinates. `--no-update-playbook` evaluates a frozen playbook; the reflection's tokens count towards the
+episode.
+
+```sh
+python -m cleanrua.delegate_memory_dexjoco --native-root /path/to/dexjoco --task pick_bucket --playbook-dir runs/playbooks
+```
+
+It made Delegate worse (2026-11-21). Playbooks were learned on seeds 10 to 14 of `click_mouse`, `pick_bucket` and
+`fold_glasses`, then frozen and tested on seeds 0 to 9:
+
+| | Pi0.5 alone | Delegate | `delegate_memory` |
+|---|---|---|---|
+| Successes | 11 of 30 | **17 of 30** | 10 of 30 |
+| Tokens per episode | 0 | **33k** | 48k |
+
+On the same seeds, `delegate_memory` succeeded 3 times where Delegate failed and failed 10 times where Delegate
+succeeded (exact McNemar p = 0.09). The playbooks came from 6 successes in 15 training episodes, yet the agent
+followed them as recipes: on `click_mouse` every test episode began with the playbook's four instructions and step
+counts, and lost three seeds that Delegate solved by varying its instructions. Because Pi0.5 samples a different
+motion every time, a sequence that worked once is weak evidence, and the playbook mostly took away the agent's
+variety. Each decision also carried about 900 more prompt tokens.
