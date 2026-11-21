@@ -23,7 +23,7 @@ export CLEANRUA_API_KEY=YOUR_API_KEY
 
 ## 3. Pi0.5
 
-Delegate, Monitor and `code_delegate` need XPolicyLab's Pi0.5 server, which ships inside RoboDojo. One checkpoint
+Delegate, Monitor and `cap_delegate` need XPolicyLab's Pi0.5 server, which ships inside RoboDojo. One checkpoint
 serves every task:
 
 ```sh
@@ -42,7 +42,7 @@ PYTHONPATH=/path/to/RoboDojo:$PWD/openpi/src python ../../setup_policy_server.py
 ```
 
 It listens on port 6000 after about 15 seconds and uses about 8.5 GB of GPU memory; on a 16 GB GPU, stop it before
-running Direct or Code. To serve it from another GPU host, run
+running Direct or CaP. To serve it from another GPU host, run
 [`examples/pi05_server/serve.sh`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/examples/pi05_server/serve.sh) there and [`examples/pi05_server/tunnel.sh`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/examples/pi05_server/tunnel.sh)
 here.
 
@@ -56,7 +56,7 @@ tensorboard --logdir runs
 
 `--task` takes any task in `RoboDojo/task/RoboDojo/config`, and `--help` lists every option. Each run writes
 TensorBoard scalars, `trajectory.jsonl`, the images shown to the model, videos and `result.json` to
-`runs/<task>__<exp_name>__<seed>__<time>/`. Code agents run the model's programs without a sandbox.
+`runs/<task>__<exp_name>__<seed>__<time>/`. CaP agents run the model's programs without a sandbox.
 
 ## 5. Tests
 

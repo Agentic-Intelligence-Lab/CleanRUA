@@ -35,10 +35,10 @@
     <path class="up" d="M187,214 H205 V66 H189" marker-end="url(#arrow)"/>
   </g>
 
-  <!-- Code -->
+  <!-- CaP -->
   <g transform="translate(248,10)">
     <rect class="card" x="0" y="0" width="225" height="245" rx="10"/>
-    <text class="title" x="112" y="30">Code</text>
+    <text class="title" x="112" y="30">CaP</text>
     <rect class="box llm" x="37" y="48" width="150" height="36" rx="6"/><text class="name" x="112" y="66">MLLM</text>
     <rect class="box exec" x="37" y="128" width="150" height="36" rx="6"/><text class="name" x="112" y="146">Python + robot API</text>
     <rect class="box robot" x="37" y="196" width="150" height="36" rx="6"/><text class="name" x="112" y="214">Robot</text>

@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from cleanrua import code_robodojo as code
+from cleanrua import cap_robodojo as code
 from test_direct_robodojo import FakeRoboDojo
 
 

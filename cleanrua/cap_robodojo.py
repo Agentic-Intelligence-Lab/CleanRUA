@@ -1,6 +1,6 @@
-# Code with Jev context compaction on RoboDojo: the Code agent keeps its whole history, and once that history
-# outgrows a budget, TypeSafe's Jev decides which past programs and results are still needed. Kept messages stay
-# verbatim; nothing is summarized. Following Jev compaction (fast-jev-compaction, jev-compactor, 2026).
+# CaP as policies on RoboDojo: an LLM writes Python programs that drive two ARX X5 arms through a small
+# robot API, and sees each program's output, images and state before writing the next.
+# Following Code as Policies (Liang et al., 2022) and its multi-turn successors such as CaP-X.
 # Setup and usage: examples/installation_robodojo.md
 import base64
 import inspect
@@ -61,28 +61,12 @@ class Args:
     """name of the environment variable holding the API key"""
     provider: Literal['openai-compatible', 'aliyun'] = 'openai-compatible'
     """`aliyun` additionally disables thinking"""
-    history_size: int | None = None
+    history_size: int | None = 4
     """number of past tool call/result pairs kept in context (text only, no old images); None keeps all"""
     max_output_tokens: int = 2048
     """output-token limit per model response"""
     request_timeout: float = 300.
     """HTTP timeout per model request, in seconds"""
-
-    # Context compaction
-    jev_budget_tokens: int = 2_500
-    """compact the history once its text is estimated to exceed this many tokens"""
-    jev_keep_recent: int = 4
-    """newest tool call/result pairs never compacted"""
-    jev_threshold: float = .5
-    """minimum keep probability for a past program or its result to stay"""
-    jev_truncate_chars: int = 300
-    """characters kept from a result that is dropped while its program stays"""
-    jev_url: str = 'https://api.typesafe.ai/v1/systemone'
-    """TypeSafe System One endpoint"""
-    jev_model: str = 'jev-latest'
-    """Jev model name"""
-    jev_key_env: str = 'TYPESAFE_API_KEY'
-    """name of the environment variable holding the TypeSafe API key"""
 
     # Budgets: RoboDojo's own step limit ends an episode, as in its official evaluation. The limits below are
     # safeguards against runaway episodes; reaching one is reported as its own stop reason.
@@ -358,81 +342,20 @@ class RUAgent:
                                    headers={'Authorization': f'Bearer {os.environ[args.api_key_env]}'},
                                    transport=httpx.HTTPTransport(retries=2))  # Retries only failed connection setup.
         self.history: deque[tuple[dict, dict]] = deque(maxlen=args.history_size)
-        self.jev = httpx.Client(timeout=60., headers={'Authorization': f'Bearer {os.environ[args.jev_key_env]}'},
-                                transport=httpx.HTTPTransport(retries=2))
 
     def reset(self, task: str, step_limit: int) -> None:
         self.task, self.step_limit, self.pending = task, step_limit, None
         self.usage = Counter()  # Token counts as reported by the provider, plus requests, images and seconds.
         self.history.clear()
-        self.compaction = None  # What the last compaction did, for the trajectory log.
 
     @property
     def total_tokens(self) -> int:
         return self.usage['total_tokens']
 
-    def compact(self) -> None:
-        """Ask Jev which past programs and results are still needed, then drop or truncate the others in place.
-
-        Jev sees the task and the whole history, abridged, and answers two yes/no questions per older pair:
-        is the result still needed verbatim, and is it still useful to know the program ran. A kept result keeps
-        its pair; a kept program alone keeps the call with a truncated result; otherwise the pair is removed."""
-        pairs = list(self.history)
-        candidates = range(len(pairs) - self.args.jev_keep_recent)
-        for limits in ((600, 300), (200, 100), (80, 40)):  # Abridge until the state fits Jev's request size.
-            state = {'goal': self.task, 'history': [{
-                'id': f't{i}', 'program': call['tool_calls'][0]['function']['arguments'][:limits[0]],
-                'result': result['content'][:limits[1]]} for i, (call, result) in enumerate(pairs)]}
-            if len(json.dumps(state)) / 4 < 24_000:
-                break
-        questions = {}
-        for i in candidates:
-            questions[f'result_t{i}'] = {'type': 'noul', 'instructions': (
-                f'Is the result of t{i} still needed verbatim to accomplish the goal, given the later history?')}
-            questions[f'program_t{i}'] = {'type': 'noul', 'instructions': (
-                f'Is it still useful for accomplishing the goal to remember that the program t{i} ran?')}
-        names, answers, requests, start = list(questions), {}, 0, time.time()
-        per_request = max(2, int((30_000 - len(json.dumps(state)) / 4) // 40) // 2 * 2)  # Two questions per pair.
-        for first in range(0, len(names), per_request):
-            response = self.jev.post(self.args.jev_url, json={
-                'model': self.args.jev_model, 'state': state,
-                'questions': {name: questions[name] for name in names[first:first + per_request]}})
-            response.raise_for_status()
-            reply = response.json()
-            answers.update({name: answer['noul'] for name, answer in reply['answers'].items()})
-            self.usage.update(jev_requests=1, jev_input_tokens=reply['usage']['input_tokens'])
-            requests += 1
-        kept, dropped, truncated = [], 0, 0
-        for i, (call, result) in enumerate(pairs):
-            if i not in candidates or answers[f'result_t{i}'] >= self.args.jev_threshold:
-                kept.append((call, result))
-            elif answers[f'program_t{i}'] >= self.args.jev_threshold:
-                content = result['content']
-                if len(content) > self.args.jev_truncate_chars:
-                    content = (content[:self.args.jev_truncate_chars]
-                               + f' [... {len(content) - self.args.jev_truncate_chars} chars dropped by compaction]')
-                    truncated += 1
-                kept.append((call, {**result, 'content': content}))
-            else:
-                dropped += 1
-        self.history = deque(kept, maxlen=self.history.maxlen)
-        self.compaction = {'pairs': len(pairs), 'dropped': dropped, 'truncated': truncated,
-                           'requests': requests, 'seconds': round(time.time() - start, 2)}
-        self.usage.update(compactions=1, jev_s=time.time() - start, history_dropped=dropped,
-                          history_truncated=truncated)
-
     def get_action(self, observation: dict) -> dict:
         if self.pending is not None:  # Pair the previous tool call with its result.
             self.history.append((self.pending, {'role': 'tool', 'tool_call_id': self.pending['tool_calls'][0]['id'],
                                                 'content': observation['feedback']}))
-        self.compaction = None
-        if (len(self.history) > self.args.jev_keep_recent
-                and len(json.dumps(list(self.history))) / 4 > self.args.jev_budget_tokens):
-            try:
-                self.compact()
-            except (httpx.HTTPError, KeyError, ValueError) as exc:  # Keep the full history and try again next turn.
-                self.usage.update(jev_errors=1)
-                self.compaction = {'error': f'{type(exc).__name__}: {exc}'[:300]}
         arms = {name: {key: arm[key] for key in ('pose', 'joints', 'gripper', 'gripper_command')}
                 for name, arm in observation['arms'].items()}
         cameras = {name: {key: value for key, value in camera.items() if key != 'rgb'}
@@ -473,7 +396,6 @@ class RUAgent:
 
     def close(self) -> None:
         self.client.close()
-        self.jev.close()
 
 
 if __name__ == '__main__':
@@ -514,7 +436,7 @@ if __name__ == '__main__':
                     Image.fromarray(camera['rgb']).save(run_dir / 'images' / f'{decision:03d}_{name}.png')
                 action = agent.get_action(observation)
                 log('action', decision=decision, message=agent.message, total_tokens=agent.total_tokens,
-                    usage=agent.last_usage, compaction=agent.compaction)
+                    usage=agent.last_usage)
                 writer.add_scalar('charts/total_tokens', agent.total_tokens, decision)
                 if agent.total_tokens >= args.max_total_tokens:
                     stop_reason = 'token_budget'

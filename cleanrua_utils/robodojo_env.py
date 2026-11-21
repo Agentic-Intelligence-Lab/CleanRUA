@@ -67,7 +67,7 @@ class RoboDojoEnv(gym.Env):
         self.action_space = spaces.Dict({'joints': spaces.Dict({name: box((6,)) for name in ARMS}),
                                          'grippers': spaces.Dict({name: box((), 0, 1) for name in ARMS})})
         self.observation_space = spaces.Dict({
-            'arms': spaces.Dict({name: arm for name in ARMS}),
+            'arms': spaces.Dict(dict.fromkeys(ARMS, arm)),
             'cameras': spaces.Dict({name: spaces.Dict({
                 'rgb': box(camera['rgb'].shape, 0, 255, np.uint8), 'intrinsic_K': box((3, 3)),
                 'T_world_from_optical': box((4, 4))}) for name, camera in observation['cameras'].items()}),

@@ -30,14 +30,14 @@ and Monitor.
 ??? note "Observations"
     Tasks: `stack_bowls`, `stack_blocks`, `general_pickup`, `put_bottles_into_dustbin`, `arrange_largest_number`,
     `classify_objects`, `stack_blocks_by_language` and `press_by_number`. One episode per task–algorithm pair
-    shows where each paradigm works and what it costs; it is not a success rate. Code on `classify_objects`
-    stopped on a provider error and is excluded, and Code and Direct were not run on `press_by_number`.
+    shows where each paradigm works and what it costs; it is not a success rate. CaP on `classify_objects`
+    stopped on a provider error and is excluded, and CaP and Direct were not run on `press_by_number`.
 
     - **The paradigms succeed on different tasks.** Monitor and Delegate solved the long pick-and-place tasks
       Pi0.5 was trained on (`put_bottles_into_dustbin`, `classify_objects`, `stack_bowls`) with 10k–50k tokens.
-      Code and Direct did better where the right object or precise alignment matters (`general_pickup`,
+      CaP and Direct did better where the right object or precise alignment matters (`general_pickup`,
       `stack_blocks`, `stack_blocks_by_language`).
-    - **Code is the stronger model-controlled paradigm.** It has the highest mean score, and in each task it
+    - **CaP is the stronger model-controlled paradigm.** It has the highest mean score, and in each task it
       usually needs about half the decisions and tokens of Direct.
     - **Direct is the most expensive.** It used 61% of all tokens; most of its 171 tool errors had no
       inverse-kinematics solution.
@@ -74,7 +74,7 @@ for every algorithm.
       and release it", even though this Pi0.5 was trained only with whole task instructions.
     - **Monitor performed like Pi0.5 alone** (31 of 50) with the fewest tokens. In 175 calls it never corrected
       the robot; it only let Pi0.5 continue.
-    - **`code_delegate` did not beat Pi0.5 alone** (28 of 50) and used the most tokens per success. Only 16 of
+    - **`cap_delegate` did not beat Pi0.5 alone** (28 of 50) and used the most tokens per success. Only 16 of
       its 288 programs called `robot.move`, and 5 of its 8 `finish` calls claimed successes the official check
       rejected, for example a bucket lifted less than the required 15 cm.
     - **No algorithm solved `bimanual_assembly`** in three seeds each, and Pi0.5 alone fails it too. It is not

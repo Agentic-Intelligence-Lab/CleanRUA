@@ -1,4 +1,4 @@
-"""CPU tests for the DexJoCo code_explore agent: finger targets and depth in programs, and the compile step."""
+"""CPU tests for the DexJoCo cap_explore agent: finger targets and depth in programs, and the compile step."""
 import json
 import os
 import unittest
@@ -7,7 +7,7 @@ from unittest import mock
 import httpx
 import numpy as np
 
-from cleanrua import code_explore_dexjoco as explore
+from cleanrua import cap_explore_dexjoco as explore
 from test_delegate_dexjoco import FakeDexJoCo
 
 

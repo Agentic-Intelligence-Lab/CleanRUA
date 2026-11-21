@@ -1,17 +1,17 @@
-"""CPU tests for the DexJoCo code_delegate wrapper: programs that mix robot.vla and robot.move."""
+"""CPU tests for the DexJoCo cap_delegate wrapper: programs that mix robot.vla and robot.move."""
 import json
 import unittest
 
 import numpy as np
 
-from cleanrua import code_delegate_dexjoco as code_delegate
+from cleanrua import cap_delegate_dexjoco as cap_delegate
 from test_delegate_dexjoco import FakeDexJoCo, FakePolicy
 
 
 class RunCodeTest(unittest.TestCase):
     def setUp(self):
         self.policy = FakePolicy()
-        self.env = code_delegate.DexJoCoWrapper(FakeDexJoCo(), self.policy)
+        self.env = cap_delegate.DexJoCoWrapper(FakeDexJoCo(), self.policy)
         self.env.reset()
 
     def run_code(self, code):

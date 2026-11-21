@@ -57,4 +57,4 @@ task has a native step limit, for example 800 control steps for `stack_bowls`.
 - The first launch takes about 100 seconds.
 - Isaac Sim uses about 7 GB of GPU memory and the Pi0.5 server about 8.5 GB. On a 16 GB GPU, some scenes, such
   as `general_pickup` and `pour_liquid_into_cup`, do not fit next to the server. Stop the server before running
-  Direct or Code.
+  Direct or CaP.

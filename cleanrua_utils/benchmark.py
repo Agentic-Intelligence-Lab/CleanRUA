@@ -1,6 +1,6 @@
 """Run CleanRUA agents on RoboDojo or DexJoCo tasks, one process per episode, and summarize their result.json files.
 
-    python -m cleanrua_utils.benchmark run --algorithms direct code --tasks stack_bowls stack_blocks --repeats 3 \
+    python -m cleanrua_utils.benchmark run --algorithms direct cap --tasks stack_bowls stack_blocks --repeats 3 \
         --native-root /path/to/RoboDojo
     python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms delegate monitor --tasks pick_bucket \
         --seeds 0-9 --native-root /path/to/dexjoco
@@ -30,8 +30,8 @@ import sys
 import time
 from pathlib import Path
 
-ALGORITHMS = ('direct', 'code', 'delegate', 'monitor', 'code_delegate', 'code_jev', 'direct_jev', 'monitor_check',
-              'delegate_memory', 'code_explore')
+ALGORITHMS = ('direct', 'cap', 'delegate', 'monitor', 'cap_delegate', 'cap_jev', 'direct_jev', 'monitor_check',
+              'delegate_memory', 'cap_explore')
 
 
 def run(args) -> None:
@@ -66,8 +66,9 @@ def run(args) -> None:
                 for task in args.tasks for algorithm in args.algorithms]
     for number, (task, algorithm, seed, repeat) in enumerate(episodes, 1):
         log = logs / f'{task}__{algorithm}__{seed}__{int(time.time())}.log'
-        command = [sys.executable, '-m', f'cleanrua.{algorithm}_{args.benchmark}', '--native-root',
-                   str(args.native_root), '--task', task, '--output-dir', str(args.output_dir), *memory_args, *args.extra]
+        command = [sys.executable, '-m', f'cleanrua.{algorithm}_{args.benchmark}',
+                   '--native-root', str(args.native_root), '--task', task, '--output-dir', str(args.output_dir),
+                   *memory_args, *args.extra]
         if args.benchmark == 'dexjoco':
             command += ['--seed', str(seed)]
         print(f'[{number}/{len(episodes)}] {algorithm} {task} seed {seed} repeat {repeat}', flush=True)
@@ -101,16 +102,6 @@ def run(args) -> None:
                 file.write(json.dumps(entry) + '\n')
         if snapshot and digest(snapshot) != frozen:
             raise ValueError(f'The frozen memory in {snapshot} changed during the episode in {log}')
-
-
-def load(directory: Path) -> list[dict]:
-    results = []
-    for path in sorted(directory.glob('*/result.json')):
-        result = json.loads(path.read_text())
-        result.setdefault('algorithm', path.parent.name.split('__')[1])
-        result.setdefault('task', path.parent.name.split('__')[0])
-        results.append(result)
-    return results
 
 
 def summary(args) -> None:
@@ -184,13 +175,18 @@ def export(args) -> None:
         data[key] = int(value) if re.fullmatch(r'-?\d+', value) else value
     data['tasks'] = args.tasks
     data['algorithms'] = args.algorithms
-    data['episodes'] = [  # An episode whose first model request failed has no usage fields.
-        {'algorithm': re.sub('_(robodojo|dexjoco)$', '', r['algorithm']), 'task': r['task'], 'success': r['success'],
-         'score': r['score'], 'decisions': r['decisions'], 'tokens': r.get('total_tokens', 0),
-         'native_steps': r['native_steps'], 'step_limit': r['step_limit'], 'elapsed_s': r['elapsed_s'],
-         'model_s': r.get('model_s', 0.), 'stop_reason': r['stop_reason'], 'finish': r['agent_finished'],
-         'invalid': r['stop_reason'].startswith('model_error')}
-        for r in load(args.output_dir)]
+    data['episodes'] = []
+    for path in sorted(args.output_dir.glob('*/result.json')):  # Run folders are <task>__<algorithm>__<seed>__<time>.
+        task, algorithm = path.parent.name.split('__')[:2]
+        r = {'task': task, 'algorithm': algorithm, **json.loads(path.read_text())}
+        data['episodes'].append({  # An episode whose first model request failed has no usage fields.
+            # Runs before 2026-11-21 named CaP agents code_*.
+            'algorithm': re.sub('^code', 'cap', re.sub('_(robodojo|dexjoco)$', '', r['algorithm'])),
+            'task': r['task'], 'success': r['success'],
+            'score': r['score'], 'decisions': r['decisions'], 'tokens': r.get('total_tokens', 0),
+            'native_steps': r['native_steps'], 'step_limit': r['step_limit'], 'elapsed_s': r['elapsed_s'],
+            'model_s': r.get('model_s', 0.), 'stop_reason': r['stop_reason'], 'finish': r['agent_finished'],
+            'invalid': r['stop_reason'].startswith('model_error')})
     data['not_run'] = []
     for item in args.not_run:
         algorithm, task = item.split(':', 1)

@@ -38,7 +38,7 @@ class SummaryTest(unittest.TestCase):
 
     def test_episodes_without_model_calls_count_zero_tokens(self):
         with tempfile.TemporaryDirectory() as directory:
-            run = Path(directory) / 'click_mouse__code_explore_dexjoco__0__1'
+            run = Path(directory) / 'click_mouse__cap_explore_dexjoco__0__1'
             run.mkdir()
             (run / 'result.json').write_text(json.dumps({  # A frozen program ran alone: no usage fields at all.
                 'stop_reason': 'native_terminated', 'success': True, 'score': 100., 'decisions': 0, 'native_steps': 50}))
@@ -60,7 +60,7 @@ class SummaryTest(unittest.TestCase):
                 ignored = root / name
                 ignored.mkdir()
                 (ignored / 'result.json').write_text('{}')
-                (ignored / 'stack_blocks__code_robodojo__0__4').mkdir()
+                (ignored / 'stack_blocks__cap_robodojo__0__4').mkdir()
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 benchmark.summary(Namespace(output_dir=root, price=[]))

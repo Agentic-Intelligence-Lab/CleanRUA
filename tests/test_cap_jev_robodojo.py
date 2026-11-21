@@ -6,7 +6,7 @@ from unittest import mock
 
 import httpx
 
-from cleanrua import code_jev_robodojo as code_jev
+from cleanrua import cap_jev_robodojo as cap_jev
 from test_direct_robodojo import FakeRoboDojo
 
 
@@ -33,12 +33,12 @@ class CompactionTest(unittest.TestCase):
 
         variables = {'CLEANRUA_API_KEY': 'k', 'CLEANRUA_BASE_URL': 'https://model.invalid/v1',
                      'CLEANRUA_MODEL_NAME': 'm', 'TYPESAFE_API_KEY': 'j'}
-        args = code_jev.Args(jev_budget_tokens=900, jev_keep_recent=2, jev_truncate_chars=20)
+        args = cap_jev.Args(jev_budget_tokens=900, jev_keep_recent=2, jev_truncate_chars=20)
         with mock.patch.dict(os.environ, variables):
-            self.agent = code_jev.RUAgent(args, tools=[])
+            self.agent = cap_jev.RUAgent(args, tools=[])
         self.agent.client = httpx.Client(base_url=self.agent.client.base_url, transport=httpx.MockTransport(chat))
         self.agent.jev = httpx.Client(transport=httpx.MockTransport(jev))
-        self.env = code_jev.RoboDojoWrapper(FakeRoboDojo())
+        self.env = cap_jev.RoboDojoWrapper(FakeRoboDojo())
 
     def play(self, turns):
         obs, _ = self.env.reset()
@@ -74,7 +74,7 @@ class CompactionTest(unittest.TestCase):
         self.assertTrue(self.agent.compaction['error'].startswith('HTTPStatusError'))
 
     def test_default_keeps_the_whole_history(self):
-        self.assertIsNone(code_jev.Args().history_size)
+        self.assertIsNone(cap_jev.Args().history_size)
 
 
 if __name__ == '__main__':

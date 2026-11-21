@@ -42,7 +42,7 @@ there and forward the port with `PORT=6001 LOCAL_PORT=6001 examples/pi05_server/
 ```sh
 python -m cleanrua.delegate_dexjoco --native-root /path/to/dexjoco --task pick_bucket
 python -m cleanrua.monitor_dexjoco --native-root /path/to/dexjoco --task pick_bucket
-python -m cleanrua.code_delegate_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+python -m cleanrua.cap_delegate_dexjoco --native-root /path/to/dexjoco --task pick_bucket
 ```
 
 `--task` takes any task in `dexjoco/configs/multi_task`, `--seed` picks the scene, and `--policy-url` defaults to

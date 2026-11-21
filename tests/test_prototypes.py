@@ -5,7 +5,7 @@ from unittest import mock
 
 import numpy as np
 
-from cleanrua.prototypes import code, delegate, direct, monitor
+from cleanrua import cap, delegate, direct, monitor
 
 
 class FakeRobot:
@@ -54,8 +54,8 @@ class PrototypeTest(unittest.TestCase):
         mllm, sent = scripted(('run_code', {'code': 'target = [.2] + [0] * 5\nprint(robot.move(target, 0))'}),
                               ('run_code', {'code': 'robot.move([2] + [0] * 5, 0)'}),
                               ('run_code', {'code': 'robot.move(target, 1)\nprint("not reached")'}))
-        with mock.patch.object(code, 'mllm', mllm):
-            self.assertEqual(code.code(robot, 'stack the blocks'), 'episode_ended')
+        with mock.patch.object(cap, 'mllm', mllm):
+            self.assertEqual(cap.cap(robot, 'stack the blocks'), 'episode_ended')
         self.assertEqual(json.loads(sent[1][-2]['content']), {'output': '3\n'})
         self.assertEqual(json.loads(sent[2][-2]['content'])['error'], 'ValueError: No inverse-kinematics solution')
         self.assertEqual(len(robot.actions), 5)

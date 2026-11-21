@@ -16,11 +16,11 @@
  "algorithms": [
   "delegate",
   "monitor",
-  "code_delegate"
+  "cap_delegate"
  ],
  "episodes": [
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": false,
    "score": 0.0,
@@ -35,7 +35,7 @@
    "invalid": true
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -50,7 +50,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -65,7 +65,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": false,
    "score": 0.0,
@@ -80,7 +80,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -95,7 +95,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -110,7 +110,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": false,
    "score": 0.0,
@@ -125,7 +125,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -140,7 +140,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -155,7 +155,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": true,
    "score": 100.0,
@@ -170,7 +170,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "click_mouse",
    "success": false,
    "score": 0.0,
@@ -485,7 +485,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -500,7 +500,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": true,
    "score": 100.0,
@@ -515,7 +515,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -530,7 +530,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": true,
    "score": 100.0,
@@ -545,7 +545,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -560,7 +560,7 @@
    "invalid": true
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -575,7 +575,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -590,7 +590,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -605,7 +605,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -620,7 +620,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -635,7 +635,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "fold_glasses",
    "success": false,
    "score": 0.0,
@@ -950,7 +950,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": false,
    "score": 0.0,
@@ -965,7 +965,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -980,7 +980,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -995,7 +995,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -1010,7 +1010,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": false,
    "score": 0.0,
@@ -1025,7 +1025,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -1040,7 +1040,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -1055,7 +1055,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": false,
    "score": 0.0,
@@ -1070,7 +1070,7 @@
    "invalid": true
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -1085,7 +1085,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": false,
    "score": 0.0,
@@ -1100,7 +1100,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "hammer_nail",
    "success": true,
    "score": 100.0,
@@ -1430,7 +1430,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1445,7 +1445,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1460,7 +1460,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1475,7 +1475,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": true,
    "score": 100.0,
@@ -1490,7 +1490,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": true,
    "score": 100.0,
@@ -1505,7 +1505,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": true,
    "score": 100.0,
@@ -1520,7 +1520,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1535,7 +1535,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1550,7 +1550,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1565,7 +1565,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "pick_bucket",
    "success": false,
    "score": 0.0,
@@ -1880,7 +1880,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1895,7 +1895,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1910,7 +1910,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1925,7 +1925,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1940,7 +1940,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1955,7 +1955,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1970,7 +1970,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -1985,7 +1985,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": false,
    "score": 0.0,
@@ -2000,7 +2000,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,
@@ -2015,7 +2015,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code_delegate",
+   "algorithm": "cap_delegate",
    "task": "water_plant",
    "success": true,
    "score": 100.0,

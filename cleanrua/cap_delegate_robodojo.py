@@ -1,4 +1,4 @@
-# Code with delegation on RoboDojo: an LLM writes Python programs that drive two ARX X5 arms through a small robot
+# CaP with delegation on RoboDojo: an LLM writes Python programs that drive two ARX X5 arms through a small robot
 # API, and the programs can delegate short phases to a Pi0.5 action model with `robot.vla`. It sees each program's
 # output, images and state before writing the next. Following PyRUA-Lean (2026), which composes robot primitives
 # and frozen VLA policies in persistent Python cells.
@@ -62,8 +62,8 @@ class Args:
     """name of the environment variable holding the API key"""
     provider: Literal['openai-compatible', 'aliyun'] = 'openai-compatible'
     """`aliyun` additionally disables thinking"""
-    history_size: int = 4
-    """number of past tool call/result pairs kept in context (text only, no old images)"""
+    history_size: int | None = 4
+    """number of past tool call/result pairs kept in context (text only, no old images); None keeps all"""
     max_output_tokens: int = 2048
     """output-token limit per model response"""
     request_timeout: float = 300.
@@ -280,7 +280,7 @@ class RoboDojoWrapper(gym.Wrapper):
         """Joint-level motions of the action model on `arms`; the other arm holds. Returns the chunks run."""
         if len(set(arms)) != len(arms):
             raise ValueError('arms must be distinct')
-        for chunk in range(chunks):
+        for _ in range(chunks):
             start = time.time()
             self.policy.call('update_obs', obs={**self.unwrapped.native_observation(), 'instruction': instruction})
             actions = self.policy.call('get_action')

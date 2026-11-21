@@ -1,7 +1,7 @@
 /* Small bar charts of CleanRUA benchmark results, drawn as plain SVG from a JSON file of episodes.
    Each <div class="rua-chart" data-src="..." data-chart="..."> becomes one chart with one bar per algorithm. */
 (function () {
-  const NAMES = { monitor: 'Monitor', delegate: 'Delegate', code: 'Code', direct: 'Direct', code_delegate: 'code_delegate' };
+  const NAMES = { monitor: 'Monitor', delegate: 'Delegate', cap: 'CaP', direct: 'Direct', cap_delegate: 'cap_delegate' };
   const SVG = 'http://www.w3.org/2000/svg';
   const cache = {};
 

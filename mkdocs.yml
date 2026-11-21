@@ -46,7 +46,7 @@ nav:
   - RUA Algorithms:
       - Overview: algorithms/overview.md
       - Direct: algorithms/direct.md
-      - Code: algorithms/code.md
+      - CaP: algorithms/cap.md
       - Delegate: algorithms/delegate.md
       - Monitor: algorithms/monitor.md
   - Environments:

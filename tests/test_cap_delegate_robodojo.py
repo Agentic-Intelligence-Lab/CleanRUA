@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from cleanrua import code_delegate_robodojo as code_delegate
+from cleanrua import cap_delegate_robodojo as cap_delegate
 from test_delegate_robodojo import FakePolicy
 from test_direct_robodojo import FakeRoboDojo
 
@@ -12,7 +12,7 @@ from test_direct_robodojo import FakeRoboDojo
 class VlaTest(unittest.TestCase):
     def setUp(self):
         self.policy = FakePolicy()
-        self.env = code_delegate.RoboDojoWrapper(FakeRoboDojo(), self.policy)
+        self.env = cap_delegate.RoboDojoWrapper(FakeRoboDojo(), self.policy)
         self.env.reset()
 
     def run_code(self, program):

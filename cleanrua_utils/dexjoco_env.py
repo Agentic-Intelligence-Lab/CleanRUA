@@ -44,8 +44,12 @@ class DexJoCoEnv(gym.Env):
         self.config = yaml.safe_load((Path(native_root) / 'configs/multi_task' / f'{task}.yaml').read_text())
         self.arms = ('right', 'left') if self.config['robot_type'] == 'dual_arm' else ('right',)
         self.cameras = tuple(dict.fromkeys(self.config['camera_mapping'].values()))
-        self._seed = seed
-        self._seed_rngs(seed)  # DexJoCo samples its scenes from the global NumPy and Python generators.
+        # Hand joints in the native state: single-arm [pose 7, hand 16]; bimanual [right pose 7, left pose 7,
+        # right hand 16, left hand 16].
+        self.hand_slices = ({'right': slice(7, 23)} if len(self.arms) == 1
+                            else {'right': slice(14, 30), 'left': slice(30, 46)})
+        np.random.seed(seed)  # DexJoCo samples its scenes from the global NumPy and Python generators.
+        random.seed(seed)
         self.native = CONFIG_MAPPING[task]().get_environment(policy_mode=True, render_mode='rgb_array', seed=seed)
         self.native.unwrapped.hz = 1e9  # Native stepping sleeps to keep 30 Hz wall-clock time; run as fast as possible.
 
@@ -60,24 +64,20 @@ class DexJoCoEnv(gym.Env):
                 'T_world_from_optical': box((4, 4))}) for name, camera in observation['cameras'].items()}),
             'native_steps': spaces.Discrete(self.step_limit + 1)})
 
-    @staticmethod
-    def _seed_rngs(seed: int) -> None:
-        np.random.seed(seed)
-        random.seed(seed)
-
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)
         if seed is not None:  # The same seed always gives the same scene.
-            self._seed_rngs(seed)
+            np.random.seed(seed)
+            random.seed(seed)
         native, _ = self.native.reset()
-        if self.task == 'click_mouse':  # As in the official evaluation: first raise the hand to the recorded start pose.
+        if self.task == 'click_mouse':  # As in the official evaluation: first move to the recorded start pose.
             start = [-.44294, 1.3729e-06, 1.517, *Rotation.from_rotvec([-3.14156462, -6.91584035e-05, -1.40317984e-03])
                      .as_quat(scalar_first=True), *np.eye(16)[12] * .263]
             for _ in range(30):
                 native, *_ = self.native.step(np.array(start))
         self.steps, self.success = 0, False
         state = native['state']
-        self._hand_command = {arm: state[self._hand_slice(arm)].copy() for arm in self.arms}
+        self._hand_command = {arm: state[self.hand_slices[arm]].copy() for arm in self.arms}
         return self._observe(native), {'instruction': self.config['prompt'], 'step_limit': self.step_limit}
 
     def step(self, action):
@@ -123,18 +123,12 @@ class DexJoCoEnv(gym.Env):
     def close(self):
         self.native.close()
 
-    def _hand_slice(self, arm: str) -> slice:
-        # Native state: single-arm [pose 7, hand 16]; bimanual [right pose 7, left pose 7, right hand 16, left hand 16].
-        if len(self.arms) == 1:
-            return slice(7, 23)
-        return slice(14, 30) if arm == 'right' else slice(30, 46)
-
     def _observe(self, native: dict) -> dict:
         self._native, state = native, native['state']
         arms = {}
         for i, arm in enumerate(self.arms):
             arms[arm] = {'pose': np.asarray(state[7 * i:7 * i + 7], np.float64),
-                         'hand': np.asarray(state[self._hand_slice(arm)], np.float64),
+                         'hand': np.asarray(state[self.hand_slices[arm]], np.float64),
                          'hand_command': self._hand_command[arm].copy()}
         model, data, cameras = self.native.unwrapped.model, self.native.unwrapped.data, {}
         height, width = model.vis.global_.offheight, model.vis.global_.offwidth

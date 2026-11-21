@@ -19,12 +19,12 @@
  "algorithms": [
   "monitor",
   "delegate",
-  "code",
+  "cap",
   "direct"
  ],
  "episodes": [
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "arrange_largest_number",
    "success": false,
    "score": 30.0,
@@ -84,7 +84,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "classify_objects",
    "success": false,
    "score": 15.0,
@@ -144,7 +144,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "general_pickup",
    "success": true,
    "score": 100.0,
@@ -234,7 +234,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "put_bottles_into_dustbin",
    "success": false,
    "score": 25.0,
@@ -294,7 +294,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "stack_blocks",
    "success": true,
    "score": 100.0,
@@ -354,7 +354,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "stack_blocks_by_language",
    "success": false,
    "score": 20.0,
@@ -414,7 +414,7 @@
    "invalid": false
   },
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "stack_bowls",
    "success": true,
    "score": 100.0,
@@ -476,7 +476,7 @@
  ],
  "not_run": [
   {
-   "algorithm": "code",
+   "algorithm": "cap",
    "task": "press_by_number"
   },
   {

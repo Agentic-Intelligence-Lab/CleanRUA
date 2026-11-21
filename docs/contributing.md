@@ -8,7 +8,7 @@ file.
 1. **Decide whether it is a new algorithm.** A change to what the model sends each turn, or to the interaction
    loop, is a new algorithm and gets a new file. A numeric setting or an on/off switch is a hyperparameter in
    `Args`, not a new file. Do not add several tricks to one algorithm.
-2. **Name the file** `<paradigm>_<environment>.py`, for example `code_robodojo.py`. A variant of a paradigm adds
+2. **Name the file** `<paradigm>_<environment>.py`, for example `cap_robodojo.py`. A variant of a paradigm adds
    a word, for example `direct_memory_robodojo.py`.
 3. **Copy, do not import.** Start from the closest existing file and change what differs. Algorithm files do not
    import from each other, so each can be read on its own.

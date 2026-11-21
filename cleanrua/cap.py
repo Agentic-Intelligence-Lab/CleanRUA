@@ -1,4 +1,4 @@
-"""Code, as a prototype: the MLLM writes Python programs that move the robot.
+"""Code as Policies, as a prototype: the MLLM writes Python programs that move the robot.
 
 Each turn the MLLM sends one program through `run_code`. The program calls a small robot API, can compute targets
 with NumPy, and prints what the model wants to read; its variables persist into later programs. When it ends, the
@@ -9,7 +9,7 @@ This shows the algorithm, not a complete agent. `robot` stands for an environmen
     robot.observe() -> {'images': {camera: (H, W, 3) uint8 array}, 'state': {name: number or list}}
     robot.ik(pose, gripper) -> list of low-level actions reaching an end-effector pose; empty if unreachable
     robot.step(action) -> True once the episode has ended
-Programs run in this process without a sandbox. See code_robodojo.py for a complete agent.
+Programs run in this process without a sandbox. See cap_robodojo.py for a complete agent.
 """
 import base64
 import contextlib
@@ -78,7 +78,7 @@ def look(observation: dict) -> dict:
     return {'role': 'user', 'content': content}
 
 
-def code(robot, instruction: str, max_decisions: int = 50, history_size: int = 4) -> str:
+def cap(robot, instruction: str, max_decisions: int = 50, history_size: int = 4) -> str:
     """Run one episode and return why it stopped."""
     history, api = [], RobotAPI(robot)
     namespace = {'np': np, 'robot': api}  # Shared by every program of the episode.
