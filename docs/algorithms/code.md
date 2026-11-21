@@ -11,6 +11,7 @@ Based on [Code as Policies](https://arxiv.org/abs/2209.07753) and its multi-turn
 
 | Variant | Description |
 |---|---|
+| [`prototypes/code.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/prototypes/code.py) | The algorithm alone, without an environment; read this first |
 | [`code_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_robodojo.py) | RoboDojo, two ARX X5 arms |
 | [`code_delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_delegate_robodojo.py) | Programs can also hand short phases to Pi0.5 with `robot.vla` ([below](#code_delegate)) |
 | [`code_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/code_jev_robodojo.py) | Keeps the whole history and compacts it with Jev ([below](#code_jev)) |
@@ -136,9 +137,22 @@ python -m cleanrua_utils.benchmark run --benchmark dexjoco --algorithms code_exp
   --seeds 0-9 --memory runs/memory --native-root /path/to/dexjoco --output-dir runs/test
 ```
 
-A first pilot did not learn `click_mouse` (2026-11-21). In six learning episodes the program learned to find the
-pad and the mouse from colour and depth and to push the mouse with one finger, but each push moved it only 1 to
-4 cm. No rehearsal succeeded, and the last program solved none of seeds 0 to 9, where Pi0.5 alone solved 5 and
-Delegate 9. Learning used 579k tokens. From the third episode on, the rehearsal took 600 to 870 of the 1,170 steps
-and left the MLLM 5 to 10 decisions to explore. RAX explores with scene resets, goal images and 16 to 64
-episodes per task.
+While exploring, the MLLM can restart its scene with `reset_scene`, up to `--attempts` times, and every tool result
+reports `task_success`, the official check, as RAX's agents have in simulation. Goal images of the finished task in
+other scenes, in `<memory-dir>/<task>/goal/`, are shown with the task and to the compile step.
+
+On `click_mouse` (2026-11-21) it learned a program that solved all ten test seeds without the MLLM:
+
+| | Pi0.5 alone | Delegate | `code_explore` |
+|---|---|---|---|
+| Successes on seeds 0 to 9 | 5 | 9 | **10** |
+| Steps per episode | 872 | 661 | **487** |
+| Tokens per episode | 0 | 27k | **0** |
+
+Learning took 16 episodes on seeds 20 to 35 and 809k tokens. The MLLM first solved the task in the fifth episode:
+it pushed the mouse about 15 cm with the side of a curled hand and pressed down once the mouse overlapped the pad.
+The program it compiled from that episode, 314 lines, found the pad by colour and the mouse in the depth image,
+checked the result after each stage, and took the blue monitor as the sign of a click. It passed the next two
+rehearsals and was verified, then succeeded in every later learning and test episode. The goal images came from
+successful Pi0.5 rollouts on seeds 40, 42 and 44. A first version without restarts, the success check or goal
+images did not learn the task in six episodes.

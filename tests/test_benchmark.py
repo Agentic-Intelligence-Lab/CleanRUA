@@ -36,6 +36,18 @@ class SummaryTest(unittest.TestCase):
                           'native_terminated, native_truncated'])
 
 
+    def test_episodes_without_model_calls_count_zero_tokens(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run = Path(directory) / 'click_mouse__code_explore_dexjoco__0__1'
+            run.mkdir()
+            (run / 'result.json').write_text(json.dumps({  # A frozen program ran alone: no usage fields at all.
+                'stop_reason': 'native_terminated', 'success': True, 'score': 100., 'decisions': 0, 'native_steps': 50}))
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                benchmark.summary(Namespace(output_dir=Path(directory), price=[]))
+            cells = [cell.strip() for cell in output.getvalue().splitlines()[-1].strip('|').split('|')]
+            self.assertEqual(cells[4:11], ['1/1', '21–100%', '100.0', '0.0', '50', '0k', '0k'])
+
     def test_excludes_model_errors_and_incomplete_episodes(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

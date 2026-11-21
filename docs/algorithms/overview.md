@@ -13,10 +13,15 @@ and one file.
 | [Delegate](delegate.md) | A sub-task instruction for a VLA | Pi0.5 | [uni-robot-agent](https://github.com/Open-RUA/uni-robot-agent) hybrid mode; [Hi Robot](https://arxiv.org/abs/2502.19417) |
 | [Monitor](monitor.md) | "Continue", or a correction | Pi0.5 with the task instruction, and the MLLM's motion tools | [Spotter](https://arxiv.org/abs/2609.36808); [GPT 6 Astra as an Embodied Policy](https://github.com/anonymous-report-421/GPT-as-Policy) |
 
+Each paradigm also has a prototype of 70 to 100 lines that shows the algorithm without an environment:
+[`direct.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/prototypes/direct.py), [`code.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/prototypes/code.py), [`delegate.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/prototypes/delegate.py) and
+[`monitor.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/prototypes/monitor.py) in `cleanrua/prototypes/`. A prototype calls the MLLM and runs the loop against a
+three-method robot interface, `observe`, `ik` and `step`, plus a VLA `policy` where the paradigm uses one. Read it
+first; the agent files add the robot conventions, the environment and the bookkeeping of a real run.
+
 A variant changes one aspect of a paradigm and adds a word to its file name, so each file still implements one
-algorithm: `code_delegate` lets Code programs call the VLA, and `code_jev` and `direct_jev` compact the history
-with Jev. Cross-episode learning, such as playbooks, memories and skill libraries, will be added the same way, for
-example `direct_memory_robodojo.py`.
+algorithm: `code_delegate` lets Code programs call the VLA, `code_jev` and `direct_jev` compact the history with
+Jev, and `delegate_memory` and `code_explore` learn across episodes.
 
 ## What every agent shares
 

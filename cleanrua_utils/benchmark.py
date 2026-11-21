@@ -156,7 +156,7 @@ def summary(args) -> None:
         mean = lambda key: statistics.mean(r.get(key, 0) for r in valid)
         rows.append((task, algorithm, n, excluded, f'{successes}/{n}', interval, f'{mean("score"):.1f}',
                      f'{mean("decisions"):.1f}', f'{mean("native_steps"):.0f}', f'{mean("total_tokens") / 1e3:.0f}k',
-                     f'{sum(r["total_tokens"] for r in valid) / successes / 1e3:.0f}k' if successes else '-',
+                     f'{sum(r.get("total_tokens", 0) for r in valid) / successes / 1e3:.0f}k' if successes else '-',
                      f'${cost / n:.2f}' if cost is not None else '-',
                      f'${cost / successes:.2f}' if cost is not None and successes else '-',
                      f'{mean("model_s"):.0f}', f'{mean("elapsed_s"):.0f}', stops))

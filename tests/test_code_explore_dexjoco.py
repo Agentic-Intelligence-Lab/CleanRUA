@@ -13,6 +13,7 @@ from test_delegate_dexjoco import FakeDexJoCo
 
 class DepthDexJoCo(FakeDexJoCo):
     """Adds one camera that sees a flat surface 0.5 m in front of it, looking down from 1.5 m."""
+    success = False
 
     def _observe(self):
         pose = np.eye(4)
@@ -56,6 +57,30 @@ class RunCodeTest(unittest.TestCase):
     def test_the_action_model_is_gone(self):
         obs, feedback = self.run_code("robot.vla('grasp')")
         self.assertIn("AttributeError", feedback['error'])
+
+
+class AttemptTest(unittest.TestCase):
+    def test_an_ended_attempt_needs_reset_scene_and_attempts_are_limited(self):
+        env = explore.DexJoCoWrapper(DepthDexJoCo(), attempts=2)
+        env.reset(seed=3)
+        step = lambda name, **arguments: json.loads(env.step({'name': name, 'arguments': json.dumps(arguments)})[0]['feedback'])
+        feedback = step('run_code', code='robot.hold(150)')  # The fake episode ends after 100 steps.
+        self.assertEqual((feedback['steps'], feedback['attempt_over'], feedback['task_success'], feedback['attempts_left']),
+                         (100, True, False, 1))
+        self.assertIn('call reset_scene', step('run_code', code='robot.hold(1)')['error'])
+        env.namespace['kept'] = 1
+        feedback = step('reset_scene')
+        self.assertEqual((feedback['ok'], feedback['attempt_over'], feedback['attempts_left']), (True, False, 0))
+        self.assertEqual((env.observation['native_steps'], env.namespace['kept']), (0, 1))
+        self.assertEqual(step('run_code', code='robot.hold(2)')['steps'], 2)
+        self.assertIn('No attempts left', step('reset_scene')['error'])
+        self.assertEqual((env.outcomes, env.total_steps), ([False], 102))
+
+    def test_testing_allows_no_restarts(self):
+        env = explore.DexJoCoWrapper(DepthDexJoCo())
+        env.reset(seed=0)
+        feedback = json.loads(env.step({'name': 'reset_scene', 'arguments': '{}'})[0]['feedback'])
+        self.assertFalse(feedback['ok'])
 
 
 class CompileTest(unittest.TestCase):

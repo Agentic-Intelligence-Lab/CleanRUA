@@ -12,6 +12,7 @@ Based on VLA-led supervision such as [Spotter](https://arxiv.org/abs/2609.36808)
 
 | Variant | Description |
 |---|---|
+| [`prototypes/monitor.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/prototypes/monitor.py) | The algorithm alone, without an environment; read this first |
 | [`monitor_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
 | [`monitor_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 |
 | [`monitor_check_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_check_dexjoco.py) | Every `run_policy` call first judges progress; a negative judgment requires a correction ([below](#monitor_check)) |
