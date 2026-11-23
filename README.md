@@ -25,11 +25,10 @@ python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_
 ```
 
 > [!TIP]
-> 1. Read an algorithm's prototype first, such as `cleanrua/direct.py`, then its agent for your benchmark, such as `cleanrua/direct_robodojo.py`.
-> 2. To add a tool, write a `@Tool` method in the agent's wrapper. To change how the agent decides, edit its `RUAgent`.
-> 3. Environments have no tools and no models, and their own check decides success; `finish` only ends the episode.
-> 4. Evaluate with `python -m cleanrua_utils.benchmark` over several seeds. Agents that learn across episodes are tested on seeds they did not learn from.
-> 5. A variant adds a word to its algorithm's name, such as `cap_delegate_robodojo.py`. Variants whose benefit is not established live in `cleanrua/experimental/`.
+> 1. Read a paradigm's prototype first, then its agent for your benchmark.
+> 2. To add a tool or change how an agent decides, edit its `@Tool` methods or its `RUAgent`.
+> 3. Environments have no tools or models, and their own check decides success.
+> 4. Evaluate an agent over several seeds with `cleanrua_utils.benchmark`.
 
 ### Algorithms implemented
 
