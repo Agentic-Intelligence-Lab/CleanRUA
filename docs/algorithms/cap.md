@@ -14,7 +14,7 @@ Based on [Code as Policies](https://arxiv.org/abs/2209.07753) and its multi-turn
 | [`cap.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap.py) | The algorithm alone, without an environment; read this first |
 | [`cap_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_robodojo.py) | RoboDojo, two ARX X5 arms |
 | [`cap_delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_delegate_robodojo.py) | Programs can also hand short phases to Pi0.5 with `robot.vla` ([below](#cap_delegate)) |
-| [`cap_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_jev_robodojo.py) | Keeps the whole history and compacts it with Jev ([below](#cap_jev)) |
+| [`cap_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/experimental/cap_jev_robodojo.py) | Experimental: keeps the whole history and compacts it with Jev ([below](#cap_jev)) |
 | [`cap_delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_delegate_dexjoco.py) | `cap_delegate` on DexJoCo, Panda arms with Allegro hands ([below](#cap_delegate)) |
 | [`cap_explore_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_explore_dexjoco.py) | Learns a task over episodes and compiles it into one program that runs alone ([below](#cap_explore)) |
 

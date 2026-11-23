@@ -3,7 +3,7 @@ judging the task stalled or failed."""
 import json
 import unittest
 
-from cleanrua import monitor_check_dexjoco as monitor_check
+from cleanrua.experimental import monitor_check_dexjoco as monitor_check
 from test_delegate_dexjoco import FakeDexJoCo, FakePolicy
 
 

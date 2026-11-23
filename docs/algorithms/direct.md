@@ -13,7 +13,7 @@ on direct LLM control as evaluated in [GPT-6 Astra on RoboDojo](https://arxiv.or
 |---|---|
 | [`direct.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/direct.py) | The algorithm alone, without an environment; read this first |
 | [`direct_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/direct_robodojo.py) | RoboDojo, two ARX X5 arms |
-| [`direct_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/direct_jev_robodojo.py) | Keeps the whole history and compacts it with Jev, as [`cap_jev`](cap.md#cap_jev) does |
+| [`direct_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/experimental/direct_jev_robodojo.py) | Experimental: keeps the whole history and compacts it with Jev, as [`cap_jev`](cap.md#cap_jev) does |
 
 ## Usage
 

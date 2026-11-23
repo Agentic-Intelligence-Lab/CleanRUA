@@ -6,7 +6,7 @@ from unittest import mock
 
 import httpx
 
-from cleanrua import direct_jev_robodojo as direct_jev
+from cleanrua.experimental import direct_jev_robodojo as direct_jev
 from test_direct_robodojo import FakeRoboDojo
 
 

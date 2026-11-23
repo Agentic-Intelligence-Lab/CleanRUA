@@ -7,7 +7,7 @@ from unittest import mock
 import httpx
 import numpy as np
 
-from cleanrua import delegate_memory_dexjoco as memory
+from cleanrua.experimental import delegate_memory_dexjoco as memory
 
 
 class ReflectTest(unittest.TestCase):

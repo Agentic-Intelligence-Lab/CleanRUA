@@ -6,7 +6,8 @@
         --seeds 0-9 --native-root /path/to/dexjoco
     python -m cleanrua_utils.benchmark summary runs/benchmark
 
-Each episode runs `python -m cleanrua.<algorithm>_<benchmark>` with the given task and writes to
+Each episode runs `python -m cleanrua.<algorithm>_<benchmark>`, or `cleanrua.experimental.` for an experimental
+variant, with the given task and writes to
 `<output-dir>/<task>__<algorithm>_<benchmark>__<seed>__<time>/`. RoboDojo has one evaluation scene, seed 0; DexJoCo
 runs every seed in `--seeds`, such as `0-9` or `10,12`. Episodes run seed by seed, `--repeats` times each. An episode
 that exceeds `--episode-timeout` or reports GPU out-of-memory is killed and recorded as such, so one stuck simulator
@@ -30,8 +31,8 @@ import sys
 import time
 from pathlib import Path
 
-ALGORITHMS = ('direct', 'cap', 'delegate', 'monitor', 'cap_delegate', 'cap_jev', 'direct_jev', 'monitor_check',
-              'delegate_memory', 'cap_explore')
+ALGORITHMS = ('direct', 'cap', 'delegate', 'monitor', 'cap_delegate', 'cap_explore')
+EXPERIMENTAL = ('cap_jev', 'direct_jev', 'monitor_check', 'delegate_memory')  # In cleanrua/experimental/.
 
 
 def run(args) -> None:
@@ -66,7 +67,8 @@ def run(args) -> None:
                 for task in args.tasks for algorithm in args.algorithms]
     for number, (task, algorithm, seed, repeat) in enumerate(episodes, 1):
         log = logs / f'{task}__{algorithm}__{seed}__{int(time.time())}.log'
-        command = [sys.executable, '-m', f'cleanrua.{algorithm}_{args.benchmark}',
+        package = 'cleanrua.experimental' if algorithm in EXPERIMENTAL else 'cleanrua'
+        command = [sys.executable, '-m', f'{package}.{algorithm}_{args.benchmark}',
                    '--native-root', str(args.native_root), '--task', task, '--output-dir', str(args.output_dir),
                    *memory_args, *args.extra]
         if args.benchmark == 'dexjoco':
@@ -200,7 +202,7 @@ if __name__ == '__main__':
     commands = parser.add_subparsers(dest='command', required=True)
     runner = commands.add_parser('run', help='run episodes')
     runner.add_argument('--benchmark', choices=('robodojo', 'dexjoco'), default='robodojo')
-    runner.add_argument('--algorithms', nargs='+', choices=ALGORITHMS, required=True)
+    runner.add_argument('--algorithms', nargs='+', choices=ALGORITHMS + EXPERIMENTAL, required=True)
     runner.add_argument('--tasks', nargs='+', required=True)
     runner.add_argument('--seeds', default='0', help='seeds such as 0-9 or 10,12; RoboDojo has only seed 0')
     runner.add_argument('--repeats', type=int, default=1, help='episodes per task, algorithm and seed')
@@ -218,7 +220,7 @@ if __name__ == '__main__':
     exporter.add_argument('output_dir', type=Path)
     exporter.add_argument('-o', '--output', type=Path, required=True)
     exporter.add_argument('--tasks', nargs='+', required=True)
-    exporter.add_argument('--algorithms', nargs='+', choices=ALGORITHMS, required=True)
+    exporter.add_argument('--algorithms', nargs='+', choices=ALGORITHMS + EXPERIMENTAL, required=True)
     exporter.add_argument('--not-run', nargs='+', default=[], metavar='ALGORITHM:TASK')
     exporter.add_argument('--meta', nargs='+', default=[], metavar='KEY=VALUE')
     args = parser.parse_args()

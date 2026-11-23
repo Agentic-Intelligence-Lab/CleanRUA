@@ -15,7 +15,7 @@ Based on VLA-led supervision such as [Spotter](https://arxiv.org/abs/2609.36808)
 | [`monitor.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor.py) | The algorithm alone, without an environment; read this first |
 | [`monitor_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
 | [`monitor_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 |
-| [`monitor_check_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/monitor_check_dexjoco.py) | Every `run_policy` call first judges progress; a negative judgment requires a correction ([below](#monitor_check)) |
+| [`monitor_check_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/experimental/monitor_check_dexjoco.py) | Experimental: every `run_policy` call first judges progress; a negative judgment requires a correction ([below](#monitor_check)) |
 
 ## Usage
 
@@ -77,7 +77,7 @@ stretch since the previous call. After `stalled` or `failed`, `run_policy` is re
 the robot, for example by raising the open hand above the object so Pi0.5 can retry.
 
 ```sh
-python -m cleanrua.monitor_check_dexjoco --native-root /path/to/dexjoco --task pick_bucket
+python -m cleanrua.experimental.monitor_check_dexjoco --native-root /path/to/dexjoco --task pick_bucket
 ```
 
 It made things worse (2026-11-20, `click_mouse`, `pick_bucket` and `fold_glasses`, seeds 0 to 4):
