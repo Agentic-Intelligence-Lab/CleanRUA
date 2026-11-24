@@ -24,6 +24,8 @@ export CLEANRUA_API_KEY=YOUR_API_KEY
 python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_bowls
 ```
 
+On a physical robot, CaP can turn an exploration episode into a Python controller with a `main(robot)` entry point. After reviewing the controller, you can run it in a new episode without calling the model. See the [real-workstation guide](realworld/README.md#运行算法).
+
 > [!TIP]
 > 1. Read a paradigm's prototype first, then its agent for your benchmark.
 > 2. To add a tool or change how an agent decides, edit its `@Tool` methods or its `RUAgent`.
