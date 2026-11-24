@@ -1,19 +1,91 @@
 # CleanRUA 可配置真机环境
 
-同一个环境与 Direct 入口读取工作站 JSON。编辑 arms 和 cameras 来配置单臂或双臂、平行夹爪或灵巧手、视角名、设备连接参数、工作区和单步限制。入口支持只读检查、受信任 Python 文件回放和 Direct 模型实验。工作站配置由设备使用者维护。
+在能访问设备的 Linux 工作站上准备 Python 3.10 或更高版本。克隆后从仓库根目录运行下列 Bash 命令。设备驱动、标定和工作站 JSON 由使用者管理。首次接入按以下顺序进行。
 
-```sh
+## 1. 获取分支并安装
+
+```bash
+git clone --branch Realworld_Dev --single-branch https://github.com/Agentic-Intelligence-Lab/CleanRUA.git
+cd CleanRUA
+python3 -m venv .venv
+source .venv/bin/activate
 python -m pip install numpy scipy pillow httpx "gymnasium==1.2.3" "pydantic>=2.11,<3" "tyro>=0.9,<1"
-python -m unittest discover -s realworld/tests -v
-python -m realworld check --out runs/offline
-python -m realworld check --config workstation.json --out runs/installed
 ```
 
-在本机创建 `workstation.json`，用 `arms` 和 `cameras` 两个对象描述实际设备。每个驱动用 `driver` 指定可信 Python 类的 `module:Class`，用 `args` 传入设备连接参数。相机键名在观测、模型消息和图像记录中保持一致。
+主程序使用虚拟环境。CaP 会通过 Linux 的 `bwrap` 启动隔离的 `/usr/bin/python3` 来执行模型写的代码。Debian/Ubuntu 上缺少依赖时可安装 `python3-venv bubblewrap python3-numpy`。程序若使用 OpenCV，也要在执行它的 Python 环境中安装。以下命令可在接设备前检查基础环境：
 
-## 替换末端或增加机械臂
+```bash
+bwrap --version
+/usr/bin/python3 -c 'import numpy'
+python -m unittest discover -s realworld/tests -v
+python -m realworld check --out "runs/offline-$(date +%s)"
+```
 
-`arms` 以 `left`、`right` 或两者为键。每侧设置 `driver`、`end_effector`（`gripper`、`hand` 或 `none`），并按现场标定填写 `workspace_m`（基座系 XYZ 上下界）、`max_translation_m` 和 `max_rotation_rad`。外接末端使用独立的 `tool.driver` 和 `tool.args`；灵巧手还需按驱动关节顺序设置 `hand_limits_rad`。配置完成后先用上面的 `check` 命令核对实测状态和各路 RGB。
+## 2. 接入自己的机械臂和相机
+
+创建一个仓库外的目录存放 `workstation.json` 和自定义驱动。每个设备用 `driver` 指定可导入的 `模块名:类名`，用 `args` 提供该类的构造参数。若驱动以本地 Python 文件提供，将它所在的目录加入 `PYTHONPATH`；已安装到虚拟环境的驱动包可直接导入。仅将 JSON 与驱动放在同一目录不足以让 Python 找到驱动。
+
+| JSON 字段 | 要填写的内容 |
+|---|---|
+| `arms.left`、`arms.right` | 按实际臂数保留相应的键。每侧填写 `driver`、`args` 和 `end_effector`（`gripper`、`hand` 或 `none`）。 |
+| 每侧的 `workspace_m` | 两个三元素数组 `[[xmin, ymin, zmin], [xmax, ymax, zmax]]`，采用该臂基座系和现场可用范围，单位米。 |
+| 每侧的 `max_translation_m`、`max_rotation_rad` | 单步允许的三维位移长度和相对旋转角，分别以米、弧度表示，均为正数。 |
+| 每侧可选的 `tool` | 外接末端填写自己的 `driver` 和 `args`。灵巧手还需在臂配置中提供 `hand_limits_rad: [下界数组, 上界数组]`，顺序与驱动一致。 |
+| `cameras` | 以视角名为键，每路填写 `driver` 和 `args`。名称可用英文字母、数字、下划线和连字符；观测、发给模型的图像和保存的 PNG 均使用同一名称。 |
+
+臂驱动的 `state()` 返回包含 `pose` 的字典。外接夹爪的 `state()` 返回 `{"gripper": 实测开度}`；一体式夹爪由臂状态提供该字段。运动方法与相机返回格式见下方[设备插件接口](#设备插件接口)。在主程序的 Python 环境中安装所用驱动和厂家 SDK。
+
+仓库内置 `realworld.drivers.franky:FrankaArm`（`args.host` 为控制柜地址，使用独立末端时设置 `with_gripper=false`）和 `realworld.drivers.opencv:USBCamera`（`args.device` 为本机视频设备）。分别需要安装与硬件匹配的 `franky` 和提供 `cv2` 的 OpenCV 包。其他机械臂、夹爪和相机可按同一接口接入。
+
+## 3. 只读检查工作站
+
+把第一行替换为自己的目录。在同一个终端继续操作：
+
+```bash
+STATION_DIR=/absolute/path/to/your/station
+STATION="$STATION_DIR/workstation.json"
+export PYTHONPATH="$STATION_DIR${PYTHONPATH:+:$PYTHONPATH}"
+CHECK_DIR="runs/check-$(date +%s)"
+python -m realworld check --config "$STATION" --out "$CHECK_DIR"
+```
+
+核对 `$CHECK_DIR/result.json` 中 `result.arms` 的实测位姿和末端状态，并打开每个 `<视角名>.png` 核对内容、颜色和相机名称。此检查无需模型密钥；驱动构造和读取应只连接设备并返回状态。省略 `--config` 会使用内置模拟设备。每次 `--out` 请使用新目录。
+
+## 4. 用 API 运行 CaP 并生成控制器
+
+准备一个支持图像输入和工具调用的模型。输入供应商的 API 基地址（含 `/v1`）、模型 ID、本局任务和密钥。下面的 `--enable-motion` 会允许模型通过上述工作站配置指挥设备，请在现场已可执行任务时运行。
+
+本分支的兼容端点走 Chat Completions；使用 OpenAI 官方基地址 `https://api.openai.com/v1` 和 `gpt-6.2-astra` 时走 Responses。若供应商或模型仅支持其中一种协议，需选择与此入口匹配的组合。
+
+```bash
+read -rp 'API base URL: ' CLEANRUA_BASE_URL
+read -rp 'Model ID: ' CLEANRUA_MODEL_NAME
+read -rsp 'API key: ' CLEANRUA_API_KEY; echo
+export CLEANRUA_BASE_URL CLEANRUA_MODEL_NAME CLEANRUA_API_KEY
+read -rp 'Task: ' TASK
+RUN_DIR="runs/cap-$(date +%s)"
+python -m realworld.cap --backend api --config "$STATION" --enable-motion \
+  --task "$TASK" --out "$RUN_DIR"
+```
+
+`trajectory.jsonl` 保存每轮的观测引用、生成代码和工具反馈。探索正常结束后会再请求同一 API，生成 `$RUN_DIR/controller.py`，入口为 `main(robot)`。在 `result.json` 中核对 `controller` 字段。`controller_verified=false` 表示已保存通过语法和入口检查的候选策略，跨局效果需要独立评估。
+
+## 5. 补生成和跨局回放
+
+若生成请求失败，保留日志和对应 PNG。确认 `RUN_DIR` 指向有结束或故障记录及观测的那一局，在上述 API 环境中运行：
+
+```bash
+python -m realworld.cap compile --backend api --run-dir "$RUN_DIR" --config "$STATION"
+```
+
+这是仅在缺少 `controller.py` 时使用的补生成步骤，无需连接机器人。已有策略时直接进入回放。审阅策略及其依赖、重新布置场景后执行：
+
+```bash
+python -m realworld replay --config "$STATION" --enable-motion \
+  --policy "$RUN_DIR/controller.py" --out "runs/replay-$(date +%s)"
+```
+
+回放使用工作站 Python 执行受信任的策略文件，无需 API key。用新一局的实测结果检查是否完成任务。
 
 ## 策略接口
 
@@ -41,15 +113,6 @@ python -m realworld.cap --task "Read the pose and finish" --output-dir runs/cap
 ```
 
 指定真实设备需传入 `--config`，并在已确认的现场实验窗口显式启用 `--enable-motion`。独立的 `realworld.__main__ check` 和 `replay` 命令用于只读检查与已审阅程序的文件回放。finish 结束回合，实物任务结果另行记录。
-
-CaP 在探索结束后沿用本局的模型，根据任务、现场参数、各轮程序和反馈、首尾观测生成 `<run-dir>/controller.py`。入口为 `main(robot)`。文件通过 Python 语法和入口检查后保存；跨局成功需要在重新摆放物体后独立评估。策略生成失败时，原因写入 `result.json` 的 `controller_error`。
-
-已有一局的 `trajectory.jsonl` 和图像时，可沿用探索时的模型配置，单独运行下面第一条命令。API 模式可以传入原来的 `--backend api --base-url ... --model ... --reasoning-effort ...`。该步骤不打开设备。审阅生成的代码后，第二条命令在新一局中运行它，不需要模型或 API key。
-
-```sh
-python -m realworld.cap compile --run-dir "$RUN_DIR" --config "$STATION"
-python -m realworld replay --config "$STATION" --enable-motion --policy "$RUN_DIR/controller.py"
-```
 
 ## Delegate 和 Monitor
 
