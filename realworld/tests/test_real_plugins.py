@@ -9,11 +9,11 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from realworld.cap import ProgramSession
+from realworld.program import ProgramSession
 from realworld.__main__ import run_method
 from realworld.delegate import RealWrapper as Delegate
 from realworld.monitor import RealWrapper as Monitor
-from realworld.real_policy import ChunkPolicy
+from realworld.policy import ChunkPolicy
 from realworld.workstation import workstation
 
 

@@ -35,7 +35,7 @@ python -m realworld check --out "runs/offline-$(date +%s)"
 
 臂驱动的 `state()` 返回包含 `pose` 的字典。外接夹爪的 `state()` 返回 `{"gripper": 实测开度}`；一体式夹爪由臂状态提供该字段。运动方法与相机返回格式见下方[设备插件接口](#设备插件接口)。在主程序的 Python 环境中安装所用驱动和厂家 SDK。
 
-仓库内置 `realworld.drivers.franky:FrankaArm`（`args.host` 为控制柜地址，使用独立末端时设置 `with_gripper=false`）和 `realworld.drivers.opencv:USBCamera`（`args.device` 为本机视频设备）。分别需要安装与硬件匹配的 `franky` 和提供 `cv2` 的 OpenCV 包。其他机械臂、夹爪和相机可按同一接口接入。
+设备适配器随工作站维护。升级已有配置时，先将适配器放入现场 Python 包，将 `arms.*.driver`、`arms.*.tool.driver` 和 `cameras.*.driver` 指向该包，保留已经标定的 `args` 和动作范围。早期只含 `host`、`camera` 的配置也需要补全这两个具名设备表。先比较新旧适配器的只读观测，再启用运动。
 
 ## 3. 只读检查工作站
 
@@ -105,7 +105,7 @@ python -m realworld direct --task "检查桌面并结束" --backend codex --reas
 
 四个独立真机模块也接受 `--backend`、`--model`、`--reasoning-effort` 和 `--base-url`。API 路径可接第三方兼容端点，需要支持 PNG 图像、强制工具调用及多轮工具结果。local 默认连接 `http://127.0.0.1:8000/v1`，可设置 `CLEANRUA_LOCAL_BASE_URL` 和可选的 `CLEANRUA_LOCAL_API_KEY`。结果文件记录任务、决策后端、请求的模型和思考强度。模型调用 `finish` 时记录 `agent_finished=true`，`task_success` 留给使用者的任务评估逻辑。
 
-四个可执行模块分别封装自己的工具、提示词和模型交互循环。四种方法使用相同的工作站配置和独立成功判据。设置 API 地址和模型名后，API 后端会优先读取 `CLEANRUA_API_KEY`；若未设置，会根据 HTTPS 端点从当前进程环境读取 OpenAI 的 `OPENAI_API_KEY`、阿里云 DashScope 的 `DASHSCOPE_API_KEY` 或 OpenRouter 的 `OPENROUTER_API_KEY`。自定义网关使用为它设置的 `CLEANRUA_API_KEY`。随后可用模拟设备运行下列命令。CaP 的隔离程序执行器需要 Linux、bubblewrap 和可导入 NumPy 的系统 Python。
+四个方法各自定义策略工具与提示词，共用模型后端、决策回合和记录格式。四种方法使用相同的工作站配置和独立成功判据。设置 API 地址和模型名后，API 后端会优先读取 `CLEANRUA_API_KEY`；若未设置，会根据 HTTPS 端点从当前进程环境读取 OpenAI 的 `OPENAI_API_KEY`、阿里云 DashScope 的 `DASHSCOPE_API_KEY` 或 OpenRouter 的 `OPENROUTER_API_KEY`。自定义网关使用为它设置的 `CLEANRUA_API_KEY`。随后可用模拟设备运行下列命令。CaP 的隔离程序执行器需要 Linux、bubblewrap 和可导入 NumPy 的系统 Python。
 
 ```sh
 python -m realworld.direct --task "Read the pose and finish" --output-dir runs/direct
@@ -131,7 +131,7 @@ python -m realworld.monitor --task "Place the block in the tray" --policy-config
 
 ### DexJoCo OpenPI 原生服务
 
-安装与服务匹配的 `openpi_client`，将 driver 设为 `realworld.real_policy:DexJoCoOpenPI`。args 提供 `url`、`camera_mapping`（checkpoint 图像键到工作站相机名）、`joint_indices`（按 Allegro 原生顺序列出工作站手指索引，即 0 到 15 的一个排列）。客户端映射为 224×224 RGB、右臂优先的 46 维状态，单臂补零，将每侧 22 维 XYZ、旋转向量及手指目标转换成工作站对应臂的 pose 和 hand。该编码仅适用于匹配的右臂或双臂灵巧手配置，基座参考系、被控法兰和手指零位都必须与 checkpoint 对齐。物理双臂若使用各自的基座坐标，需在设备或策略适配器中完成与训练世界系的变换。普通 Franka 二指夹爪应选择匹配其训练数据的策略。
+安装与服务匹配的 `openpi_client`，将 driver 设为 `realworld.policy:DexJoCoOpenPI`。args 提供 `url`、`camera_mapping`（checkpoint 图像键到工作站相机名）、`joint_indices`（按 Allegro 原生顺序列出工作站手指索引，即 0 到 15 的一个排列）。客户端映射为 224×224 RGB、右臂优先的 46 维状态，单臂补零，将每侧 22 维 XYZ、旋转向量及手指目标转换成工作站对应臂的 pose 和 hand。该编码仅适用于匹配的右臂或双臂灵巧手配置，基座参考系、被控法兰和手指零位都必须与 checkpoint 对齐。物理双臂若使用各自的基座坐标，需在设备或策略适配器中完成与训练世界系的变换。
 
 其他 checkpoint 可通过可信配置中的 `module:Class` 提供客户端；实现 `predict(observation, instruction)`，返回上述物理单位的绝对动作序列即可。环境及两个 Agent 无需修改。
 
@@ -161,4 +161,16 @@ CLEANRUA_DECISION_BACKEND=codex python -m realworld.direct \
 
 适配器会检查登录方式，每轮将各相机的 PNG、状态、历史反馈及当前工具声明发给 CLI，通过结构化输出取得一条工具调用，再由环境校验并执行。CLI 失败会结束本次试验。默认后端为 `api`。ChatGPT 计划的额度、超额使用和信用点取决于账号设置，参见 [OpenAI 的 Codex 计划说明](https://help.openai.com/en/articles/11369540-using-codex-with-your-chatgpt-plan)。
 
-四个 `*_real` 入口均支持该选项。Delegate 和 Monitor 的 VLA 仍通过自己的策略客户端运行。其他 CLI 可通过 `CLEANRUA_DECISION_BACKEND=module:factory` 提供适配器：factory 接收当前工具列表，返回 `decide(messages)`，其结果为含一条 tool_calls 的 assistant 消息。各供应商的认证、图片输入及输出解析由对应适配器负责。
+四种方法均支持该选项。Delegate 和 Monitor 的 VLA 仍通过自己的策略客户端运行。其他 CLI 可通过 `CLEANRUA_DECISION_BACKEND=module:factory` 提供适配器：factory 接收当前工具列表，返回 `decide(messages)`，其结果为含一条 tool_calls 的 assistant 消息。各供应商的认证、图片输入及输出解析由对应适配器负责。
+
+
+## 代码结构
+
+| 文件 | 职责 |
+|---|---|
+| `direct.py`、`cap.py`、`delegate.py`、`monitor.py` | 复用各上游方法的提示词，提供工作站专属工具。CaP 在探索完成后生成控制器。 |
+| `agent.py`、`episode.py` | 校验并执行工具调用；组装每轮模型输入，记录动作、实测回执、终止原因和故障。仿真原型和真机共用 `cleanrua_utils.agent` 中的图像编码及工具决策函数。 |
+| `model.py`、`policy.py` | 分别连接决策模型和动作策略。 |
+| `program.py` | 在隔离 Python 会话中执行 CaP 程序，经父进程访问工作站。 |
+| `workstation.py`、`env.py` | 按 JSON 导入现场驱动，提供统一的观测、运动校验、执行与回读。 |
+| `__main__.py` | 四种方法的命令行入口、只读检查和受信任策略回放。 |

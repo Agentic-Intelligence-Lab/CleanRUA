@@ -4,16 +4,16 @@ from unittest.mock import Mock
 
 import numpy as np
 
-from realworld.workstation import legacy_profile, workstation
+from realworld.workstation import mock_profile, workstation
 
 
 class WorkstationTest(unittest.TestCase):
     def setUp(self):
-        config = legacy_profile()
+        config = mock_profile()
         hand = copy.deepcopy(config["arms"]["left"])
         hand.update(end_effector="hand",
                     hand_limits_rad=[[-1]*3, [1]*3],
-                    tool={"driver": "realworld.bench_mock:MockHand", "args": {"joints": 3}})
+                    tool={"driver": "realworld.tests.fixtures.devices:MockHand", "args": {"joints": 3}})
         config["arms"]["right"] = hand
         config["cameras"] = dict.fromkeys(("front", "left_wrist", "right_wrist", "head"), config["cameras"]["scene"])
         self.env = workstation(config, True)

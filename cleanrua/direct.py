@@ -10,13 +10,11 @@ This shows the algorithm, not a complete agent. `robot` stands for an environmen
     robot.step(action) -> True once the episode has ended
 See direct_robodojo.py for a complete agent.
 """
-import base64
-import io
 import json
 import os
 
 import httpx
-from PIL import Image
+from cleanrua_utils.agent import look, request_tool
 
 SYSTEM = ('You control a robot arm. Reply with exactly one tool call each turn. Poses are [x, y, z, roll, pitch, '
           'yaw] of the end effector, in metres and radians. Use the images and state, and check each motion before '
@@ -45,24 +43,11 @@ def mllm(messages: list[dict]) -> dict:
     return {'role': 'assistant', 'content': message.get('content'), 'tool_calls': message['tool_calls'][:1]}
 
 
-def look(observation: dict) -> dict:
-    """The current state and images as one user message."""
-    content = [{'type': 'text', 'text': 'State: ' + json.dumps(observation['state'])}]
-    for camera, image in observation['images'].items():
-        png = io.BytesIO()
-        Image.fromarray(image).save(png, format='PNG')
-        content += [{'type': 'text', 'text': f'Camera {camera}:'}, {'type': 'image_url', 'image_url': {
-            'url': 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()}}]
-    return {'role': 'user', 'content': content}
-
-
 def direct(robot, instruction: str, max_decisions: int = 50, history_size: int = 4) -> str:
     """Run one episode and return why it stopped."""
     history = []  # Past tool calls and their results, as text: only the current observation carries images.
     for _ in range(max_decisions):
-        message = mllm([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
-                        *history[-2 * history_size:], look(robot.observe())])
-        call = message['tool_calls'][0]
+        message, call = request_tool(mllm, SYSTEM, f'Task: {instruction}', history, history_size, robot.observe())
         if call['function']['name'] == 'finish':
             return 'finish'
         arguments = json.loads(call['function']['arguments'])

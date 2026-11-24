@@ -2,17 +2,16 @@
 import importlib
 import re
 
-from realworld.real_arm_env import Bench
+from realworld.env import Bench
 
 
 def device(spec):
     module, name = spec["driver"].split(":")
-    # Existing workstation JSON may still name the original built-in driver modules.
-    if module in ("cleanrua_utils.bench_mock", "cleanrua_utils.drivers.franky",
-                  "cleanrua_utils.drivers.opencv", "cleanrua_utils.franka_env", "cleanrua_utils.real_policy"):
-        module = "realworld." + module.split(".", 1)[1]
-    if module in ("examples.plug_and_play.pattern_camera", "realworld.examples.plug_and_play.pattern_camera"):
-        module = "realworld.bench_mock"
+    if module in ("cleanrua_utils.real_policy", "realworld.real_policy"):
+        module = "realworld.policy"
+    if module in ("cleanrua_utils.bench_mock", "realworld.bench_mock", "examples.plug_and_play.pattern_camera",
+                  "realworld.examples.plug_and_play.pattern_camera"):
+        module = "realworld.tests.fixtures.devices"
     return getattr(importlib.import_module(module), name)(**spec.get("args", {}))
 
 
@@ -43,18 +42,12 @@ class ArmWithTool:
             self.tool.stop()
 
 
-def legacy_profile(config=None):
-    live = config is not None
-    config = config or {}
-    return {"arms": {"left": {"driver": "realworld.drivers.franky:FrankaArm" if live else
-                              "realworld.bench_mock:MockArm",
-                              "args": {"host": config["host"]} if live else {},
-                              "end_effector": "gripper",
-                              "workspace_m": config.get("workspace_m") if live else [[.2,-.2,.1],[.6,.2,.5]],
+def mock_profile():
+    devices = "realworld.tests.fixtures.devices"
+    return {"arms": {"left": {"driver": devices + ":MockArm", "end_effector": "gripper",
+                              "workspace_m": [[.2,-.2,.1],[.6,.2,.5]],
                               "max_translation_m": .031, "max_rotation_rad": .18}},
-            "cameras": {"scene": {"driver": "realworld.drivers.opencv:USBCamera" if live else
-                                  "realworld.bench_mock:MockCamera",
-                                  "args": {"device": config["camera"]} if live else {}}}}
+            "cameras": {"scene": {"driver": devices + ":MockCamera"}}}
 
 
 def require_methods(driver, methods, label):
@@ -65,8 +58,10 @@ def require_methods(driver, methods, label):
 
 def workstation(config, motion_enabled=False):
     arms, cameras = {}, {}
-    if config is None or "arms" not in config:
-        config = legacy_profile(config)
+    if config is None:
+        config = mock_profile()
+    elif "arms" not in config:
+        raise ValueError("Workstation JSON requires named arms with explicit driver and args")
     try:
         for side, p in config["arms"].items():
             arm = device(p)

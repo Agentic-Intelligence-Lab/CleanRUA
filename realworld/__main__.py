@@ -3,15 +3,17 @@ import argparse
 from importlib import import_module
 import inspect
 import json
+import re
 import runpy
+import sys
 import os
 import time
 from pathlib import Path
 
 from PIL import Image
 
-from realworld.real_decision import MODEL_KEYS, configure_decision, decision_settings
-from realworld.real_policy import load_policy
+from realworld.model import MODEL_KEYS, configure_decision, decision_settings
+from realworld.policy import load_policy
 from realworld.workstation import workstation
 
 
@@ -38,12 +40,21 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
     return method(bench, task, run_dir, **options)
 
 
-def main(argv=None):
+def module_main(method):
+    args = sys.argv[1:]
+    if method == "direct" and args[:1] in (["check"], ["replay"], ["direct"], ["cap"]):
+        return main(args)
+    return main([method, *args], standalone=True)
+
+
+def main(argv=None, *, standalone=False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", nargs="?", help="check, replay, an algorithm name, or trusted module:function")
     parser.add_argument("--config", type=Path, help="Trusted workstation JSON; omit for offline fixtures")
-    parser.add_argument("--enable-motion", action="store_true")
+    parser.add_argument("--enable-motion", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--out", type=Path, help="New directory for this run")
+    parser.add_argument("--output-dir", type=Path, default=Path("runs"))
+    parser.add_argument("--max-decisions", type=int, default=30)
     parser.add_argument("--policy-config", type=Path, help="Action policy client configuration")
     parser.add_argument("--policy", type=Path)
     parser.add_argument("--task")
@@ -75,7 +86,12 @@ def main(argv=None):
                 args.enable_motion = input(f"Enable motion for {args.config} and task {args.task!r}? [y/N]: ").strip().lower() == "y"
         except EOFError:
             parser.error("Supply a method and --task for non-interactive runs")
-    args.out = args.out or Path("runs") / f"{args.mode.replace(':', '_')}__{time.time_ns()}"
+    if args.out is None:
+        name = args.mode.replace(":", "_")
+        if standalone:
+            task_name = re.sub(r"[^\w-]+", "_", args.task or "").strip("_")[:64] or "task"
+            name = f"{task_name}__{name}_real__0"
+        args.out = args.output_dir / f"{name}__{time.time_ns()}"
     experiment = args.mode not in ("check", "replay")
     if experiment and (not (args.task or "").strip() or (args.config and not args.enable_motion)):
         parser.error("Model experiments require --task and live experiments also require --enable-motion")
@@ -100,7 +116,10 @@ def main(argv=None):
     bench = workstation(config, args.mode != "check" and (not args.config or args.enable_motion))
     try:
         if experiment:
-            result = run_method(bench, args.task, args.out, algorithm=args.mode, policy=policy)
+            result = run_method(bench, args.task, args.out, algorithm=args.mode, policy=policy, max_decisions=args.max_decisions)
+            if standalone:
+                print(json.dumps({"run_dir": str(args.out), "stop_reason": result}))
+                return
         elif args.mode == "replay":
             result = runpy.run_path(str(args.policy))["main"](bench)
         else:

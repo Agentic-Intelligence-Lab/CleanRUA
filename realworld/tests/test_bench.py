@@ -4,16 +4,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock
 
-from realworld.direct_franka import run_direct
-from realworld.bench_mock import MockArm, MockCamera
-from realworld.real_arm_env import Bench
-from realworld.workstation import legacy_profile
+from realworld.direct import run_direct
+from realworld.tests.fixtures.devices import MockArm, MockCamera
+from realworld.env import Bench
+from realworld.workstation import mock_profile
 
 
 class FreshBenchTest(unittest.TestCase):
     def setUp(self):
         self.arm = MockArm()
-        self.profiles = legacy_profile()["arms"]
+        self.profiles = mock_profile()["arms"]
         self.bench = Bench({"left": self.arm}, {"scene": MockCamera()}, self.profiles, motion_enabled=True)
 
     def test_decision_to_measured_state(self):

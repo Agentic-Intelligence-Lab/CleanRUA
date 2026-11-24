@@ -1,16 +1,16 @@
 {
   "arms": {
     "left": {
-      "driver": "realworld.bench_mock:MockArm",
+      "driver": "realworld.tests.fixtures.devices:MockArm",
       "end_effector": "gripper",
       "workspace_m": [[0.2, -0.2, 0.1], [0.6, 0.2, 0.5]],
       "max_translation_m": 0.03,
       "max_rotation_rad": 0.18
     },
     "right": {
-      "driver": "realworld.bench_mock:MockArm",
+      "driver": "realworld.tests.fixtures.devices:MockArm",
       "end_effector": "hand",
-      "tool": {"driver": "realworld.bench_mock:MockHand", "args": {"joints": 3}},
+      "tool": {"driver": "realworld.tests.fixtures.devices:MockHand", "args": {"joints": 3}},
       "hand_limits_rad": [[-1, -1, -1], [1, 1, 1]],
       "workspace_m": [[0.2, -0.2, 0.1], [0.6, 0.2, 0.5]],
       "max_translation_m": 0.03,
@@ -18,9 +18,9 @@
     }
   },
   "cameras": {
-    "front": {"driver": "realworld.bench_mock:MockCamera"},
+    "front": {"driver": "realworld.tests.fixtures.devices:MockCamera"},
     "right_wrist": {
-      "driver": "realworld.bench_mock:PatternCamera",
+      "driver": "realworld.tests.fixtures.devices:PatternCamera",
       "args": {"width": 320, "height": 240}
     }
   }

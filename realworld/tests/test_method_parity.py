@@ -99,7 +99,7 @@ class MethodParityTest(unittest.TestCase):
                 return httpx.Response(200, json=payload)
             with self.subTest(responses_api=responses_api), tempfile.TemporaryDirectory() as folder, \
                     patch.dict(os.environ, config), httpx.Client(transport=httpx.MockTransport(endpoint)) as client, \
-                    patch("realworld.real_decision.httpx.post", client.post):
+                    patch("realworld.model.httpx.post", client.post):
                 root = Path(folder)
                 bench = workstation(None, False)
                 self.addCleanup(bench.close)
@@ -111,7 +111,7 @@ class MethodParityTest(unittest.TestCase):
                         run_cap(bench, "read the current state", root)
                     self.assertIn("controller_error", json.loads((root / "result.json").read_text()))
                     with patch.object(sys, "argv", ["cap", "compile", "--run-dir", folder]), \
-                            patch("realworld.cap.workstation", side_effect=AssertionError("devices opened")):
+                            patch("realworld.workstation.workstation", side_effect=AssertionError("devices opened")):
                         cap_cli()
                     self.assertEqual(sent, ["/v1/chat/completions"] * 3)
                 self.assertEqual((root / "controller.py").read_text(), source)

@@ -6,7 +6,7 @@ import subprocess
 import unittest
 from unittest.mock import patch
 
-from realworld.decision_cli import configured_decider
+from realworld.model import configured_decider
 
 
 class DecisionCLITest(unittest.TestCase):

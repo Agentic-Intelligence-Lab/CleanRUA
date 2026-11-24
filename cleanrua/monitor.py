@@ -12,13 +12,11 @@ This shows the algorithm, not a complete agent. `robot` and `policy` stand for a
     policy(observation, instruction) -> list of low-level actions, a chunk predicted by a VLA
 See monitor_robodojo.py for a complete agent.
 """
-import base64
-import io
 import json
 import os
 
 import httpx
-from PIL import Image
+from cleanrua_utils.agent import look, request_tool
 
 ACTIONS_PER_CHUNK = 25  # Actions run from each predicted chunk before the VLA sees a fresh observation.
 SYSTEM = ('A vision-language-action model (VLA) does the task on a robot arm; you supervise it. Reply with exactly one '
@@ -54,24 +52,11 @@ def mllm(messages: list[dict]) -> dict:
     return {'role': 'assistant', 'content': message.get('content'), 'tool_calls': message['tool_calls'][:1]}
 
 
-def look(observation: dict) -> dict:
-    """The current state and images as one user message."""
-    content = [{'type': 'text', 'text': 'State: ' + json.dumps(observation['state'])}]
-    for camera, image in observation['images'].items():
-        png = io.BytesIO()
-        Image.fromarray(image).save(png, format='PNG')
-        content += [{'type': 'text', 'text': f'Camera {camera}:'}, {'type': 'image_url', 'image_url': {
-            'url': 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()}}]
-    return {'role': 'user', 'content': content}
-
-
 def monitor(robot, policy, instruction: str, max_decisions: int = 50, history_size: int = 4) -> str:
     """Run one episode and return why it stopped."""
     history = []
     for _ in range(max_decisions):
-        message = mllm([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
-                        *history[-2 * history_size:], look(robot.observe())])
-        call = message['tool_calls'][0]
+        message, call = request_tool(mllm, SYSTEM, f'Task: {instruction}', history, history_size, robot.observe())
         name, arguments = call['function']['name'], json.loads(call['function']['arguments'])
         if name == 'finish':
             return 'finish'

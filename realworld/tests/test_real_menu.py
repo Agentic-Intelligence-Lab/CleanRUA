@@ -19,7 +19,7 @@ class RealMenuTest(unittest.TestCase):
             with self.subTest(backend=backend), tempfile.TemporaryDirectory() as tmp:
                 out = Path(tmp, "run")
                 with patch.dict(os.environ, env, clear=True), patch("builtins.input", side_effect=answers), \
-                        patch("realworld.real_decision.httpx.post") as post:
+                        patch("realworld.model.httpx.post") as post:
                     post.return_value.json.return_value = {"choices": [{"message": {"role": "assistant",
                         "tool_calls": [{"id": "1", "function": {"name": "finish", "arguments": "{}"}}]}}]}
                     main([*args, "--out", str(out)])

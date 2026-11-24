@@ -15,13 +15,13 @@ from PIL import Image
 from realworld.delegate import RealWrapper as Delegate
 from realworld.monitor import RealWrapper as Monitor
 from realworld.__main__ import run_method
-from realworld.real_policy import CONTRACT, ChunkPolicy, DexJoCoOpenPI, HTTPArmPolicy
-from realworld.workstation import legacy_profile, workstation
+from realworld.policy import CONTRACT, ChunkPolicy, DexJoCoOpenPI, HTTPArmPolicy
+from realworld.workstation import mock_profile, workstation
 
 
 class PolicyTest(unittest.TestCase):
     def setUp(self):
-        cfg = legacy_profile()
+        cfg = mock_profile()
         cfg["arms"]["right"] = copy.deepcopy(cfg["arms"]["left"])
         cfg["cameras"]["wrist"] = cfg["cameras"]["scene"]
         self.bench = workstation(cfg, True)
@@ -85,7 +85,7 @@ class PolicyTest(unittest.TestCase):
 
     def test_http_adapter_sends_all_views_and_rejects_wrong_contract(self):
         obs = self.bench.observe()
-        with patch("realworld.real_policy.httpx.post") as post:
+        with patch("realworld.policy.httpx.post") as post:
             post.return_value.json.return_value = {"contract":"delta", "actions":[]}
             with self.assertRaises(ValueError):
                 HTTPArmPolicy("http://example.invalid/infer").predict(obs,"phase")

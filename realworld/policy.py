@@ -10,7 +10,7 @@ import numpy as np
 from PIL import Image
 from scipy.spatial.transform import Rotation
 
-from realworld.real_arm_env import InvalidTarget
+from realworld.env import InvalidTarget
 from realworld.workstation import device
 
 

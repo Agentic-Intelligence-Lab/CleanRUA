@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from realworld.real_decision import mllm
+from realworld.model import mllm
 
 
 class ApiCredentialsTest(unittest.TestCase):
@@ -14,7 +14,7 @@ class ApiCredentialsTest(unittest.TestCase):
                      ("https://openrouter.ai/api/v1", "openrouter-test")]
         for url, key in endpoints:
             with self.subTest(url=url), patch.dict(os.environ, {**env, "CLEANRUA_BASE_URL": url}, clear=True), \
-                    patch("realworld.real_decision.httpx.post") as post:
+                    patch("realworld.model.httpx.post") as post:
                 post.return_value.json.return_value = {"choices": [{"message": {"tool_calls": []}}]}
                 mllm([], [])
                 self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer " + key)
@@ -26,7 +26,7 @@ class ApiCredentialsTest(unittest.TestCase):
         for url in ("https://proxy.invalid/v1", "http://api.openai.com/v1", "https://api.openai.com:8443/v1"):
             with self.subTest(url=url), patch.dict(os.environ, {"CLEANRUA_BASE_URL": url,
                     "CLEANRUA_MODEL_NAME": "vlm", "OPENAI_API_KEY": "test"}, clear=True), \
-                    patch("realworld.real_decision.httpx.post") as post:
+                    patch("realworld.model.httpx.post") as post:
                 with self.assertRaisesRegex(ValueError, "CLEANRUA_API_KEY"):
                     mllm([], [])
                 post.assert_not_called()

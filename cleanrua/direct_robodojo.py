@@ -12,18 +12,19 @@ from collections import Counter, deque
 from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
-from typing import Annotated, Literal, get_type_hints
+from typing import Annotated, Literal
 
 import gymnasium as gym
 import httpx
 import numpy as np
 import tyro
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field, create_model
+from pydantic import BaseModel, ConfigDict, Field
 from scipy.spatial.transform import Rotation, Slerp
 from tensorboardX import SummaryWriter
 
 from cleanrua_utils.robodojo_env import RoboDojoEnv
+from cleanrua_utils.tools import Tool
 
 
 @dataclass
@@ -87,16 +88,6 @@ class Target(BaseModel):
     pose: Annotated[list[float], Field(min_length=6, max_length=6, description=(
         'Absolute world grasp-site [x,y,z,roll,pitch,yaw]; metres and fixed-axis XYZ radians, R=Rz(yaw)@Ry(pitch)@Rx(roll).'))]
     gripper: Annotated[float, Field(ge=0, le=1, description='Normalized opening: 0=closed, 1=open.')] = None
-
-
-def Tool(method):
-    """Expose a wrapper method to the model: its signature becomes the argument schema, its docstring the description."""
-    hints = get_type_hints(method, include_extras=True)
-    fields = {name: (hints[name], ... if p.default is p.empty else p.default)
-              for name, p in inspect.signature(method).parameters.items() if name != 'self'}
-    method.arguments = create_model(method.__name__, __config__=ConfigDict(extra='forbid', allow_inf_nan=False),
-                                    **fields)
-    return method
 
 
 class RoboDojoWrapper(gym.Wrapper):
