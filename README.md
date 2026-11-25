@@ -5,7 +5,7 @@ Following the [CleanRL](https://github.com/vwxyzjn/cleanrl) design philosophy, C
 <img alt="Successful episodes. Top, RoboDojo head camera: delegate stacking bowls, direct stacking blocks and direct lifting scissors. Bottom, DexJoCo ego camera: delegate clicking the mouse on its pad, delegate hammering the nail and monitor lifting the bucket with the boxed food inside" src="docs/demo.gif" width="100%" />
 
 ### News
-- **[2026/11/25]** Run all four paradigms on RoboDojo with Qwen4-Max: Monitor succeeded in 4 of 8 tasks ([evaluation](https://cleanrua.agentic-intelligence-lab.org/get-started/evaluation/)).
+- **[2026/11/25]** Rerun both benchmarks with Qwen4-Max: Monitor did best on RoboDojo (4 of 8 tasks) and DexJoCo (33 of 50 episodes) ([evaluation](https://cleanrua.agentic-intelligence-lab.org/get-started/evaluation/)).
 - **[2026/11/23]** Add a prototype of about 100 lines for each paradigm, and move unproven variants to `cleanrua/experimental/`.
 - **[2026/11/21]** Add `cap_explore`, which compiles its exploration into one program: 10 of 10 on DexJoCo `click_mouse` with no model calls at test time. Code is renamed CaP.
 - **[2026/11/20]** Add [DexJoCo](https://github.com/brave-eai/dexjoco) with dexterous hands. Delegate succeeded in 36 of 50 episodes, Pi0.5 alone in 28 ([evaluation](https://cleanrua.agentic-intelligence-lab.org/get-started/evaluation/)).

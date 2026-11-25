@@ -113,3 +113,30 @@ for every algorithm.
 
     The episodes behind these charts are in
     [`dexjoco-round1.json`](../assets/results/dexjoco-round1.json).
+
+Round 2 (2026-11-25, commit `26d1b3f`): the same tasks, seeds and settings with Qwen4-Max (reasoning effort xhigh)
+instead of GPT-6 Astra. Each episode may take 3 hours instead of 1.
+
+<div class="rua-row">
+<div class="rua-chart" data-src="../../assets/results/dexjoco-qwen4max.json" data-chart="success"></div>
+<div class="rua-chart" data-src="../../assets/results/dexjoco-qwen4max.json" data-chart="tokens"></div>
+<div class="rua-chart" data-src="../../assets/results/dexjoco-qwen4max.json" data-chart="tokens_per_success"></div>
+</div>
+
+??? note "Observations"
+    150 episodes on the five single-arm tasks, none stopped by a provider error.
+
+    - **All three algorithms land close to round 1.** Monitor succeeded in 33 of 50 episodes, Delegate in 31 and
+      `cap_delegate` in 30, against 31, 36 and 28 with GPT-6 Astra. Pi0.5 alone succeeded in 28 on the same seeds.
+    - **None differs significantly from Pi0.5 alone.** On the same seeds Monitor succeeded 12 times where Pi0.5
+      alone failed and failed 7 times where it succeeded (exact McNemar p = 0.36); Delegate 11 and 8, `cap_delegate`
+      10 and 8.
+    - **Monitor is again the cheapest**, about 24k tokens and 75 seconds of model time per episode, against 34k for
+      Delegate and 59k for `cap_delegate`.
+    - **`fold_glasses` stays the hardest single-arm task** (3 to 5 of 10), and no algorithm solved
+      `bimanual_assembly` in three seeds each.
+    - **`finish` was rare and wrong.** Each algorithm called it once, and each time the official check rejected
+      the claimed success.
+
+    The episodes behind these charts are in
+    [`dexjoco-qwen4max.json`](../assets/results/dexjoco-qwen4max.json).
