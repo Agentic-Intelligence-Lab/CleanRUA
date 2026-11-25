@@ -15,6 +15,7 @@ Based on [Code as Policies](https://arxiv.org/abs/2209.07753) and its multi-turn
 | [`cap_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_robodojo.py) | RoboDojo, two ARX X5 arms |
 | [`cap_delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_delegate_robodojo.py) | Programs can also hand short phases to Pi0.5 with `robot.vla` ([below](#cap_delegate)) |
 | [`cap_jev_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/experimental/cap_jev_robodojo.py) | Experimental: keeps the whole history and compacts it with Jev ([below](#cap_jev)) |
+| [`cap_tools_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/experimental/cap_tools_robodojo.py) | Experimental: programs get geometry tools for calibrated RGB cameras (pixel rays, triangulation, projection) and `robot.reachable`; `move` turns a grasp half a turn about its approach axis when that keeps the wrist roll off its joint limit |
 | [`cap_delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_delegate_dexjoco.py) | `cap_delegate` on DexJoCo, Panda arms with Allegro hands ([below](#cap_delegate)) |
 | [`cap_explore_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/cap_explore_dexjoco.py) | Learns a task over episodes and compiles it into one program that runs alone ([below](#cap_explore)) |
 
@@ -70,6 +71,8 @@ Inside a program:
 | stack_blocks | **100** (success) | 24 | 164k |
 
 All 24 programs in `stack_blocks` ran without errors; most were 2 to 9 lines long.
+
+`cap_tools` succeeded on `general_pickup` with Qwen4-Max (2026-11-24, one episode): 15 decisions, 146k tokens, 14 minutes. It triangulated the scissors from two cameras and grasped them on the fourth attempt; the half-turn grasp did not trigger. With Qwen3.8-Flash the same task failed: the model closed the gripper above the scissors and could not tell that it held nothing.
 
 ## `cap_delegate`
 

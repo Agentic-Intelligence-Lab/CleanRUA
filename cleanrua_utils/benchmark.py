@@ -32,7 +32,8 @@ import time
 from pathlib import Path
 
 ALGORITHMS = ('direct', 'cap', 'delegate', 'monitor', 'cap_delegate', 'cap_explore')
-EXPERIMENTAL = ('cap_jev', 'direct_jev', 'monitor_check', 'delegate_memory')  # In cleanrua/experimental/.
+EXPERIMENTAL = ('cap_jev', 'cap_tools', 'direct_jev', 'direct_stream', 'monitor_check',  # In cleanrua/experimental/.
+                'delegate_memory')
 
 
 def run(args) -> None:

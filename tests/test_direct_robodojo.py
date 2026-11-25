@@ -216,6 +216,29 @@ class AgentTest(unittest.TestCase):
             agent.last_usage,
             {'total_tokens': 10, 'prompt_tokens': 8, 'completion_tokens': 2, 'cached_tokens': 4, 'reasoning_tokens': 0})
 
+    def test_auto_tool_choice_asks_again_after_a_text_reply(self):
+        requests = []
+
+        def handler(request):
+            requests.append(json.loads(request.content))
+            message = {'role': 'assistant', 'content': 'I will look first.'}
+            if len(requests) == 2:
+                message['tool_calls'] = [{'id': 'call-1', 'type': 'function',
+                                          'function': {'name': 'capture_scene', 'arguments': '{}'}}]
+            return httpx.Response(200, json={'usage': {'total_tokens': 10, 'prompt_tokens': 8, 'completion_tokens': 2},
+                                             'choices': [{'message': message}]})
+
+        variables = {'CLEANRUA_API_KEY': 'test-key', 'CLEANRUA_BASE_URL': 'https://model.invalid/v1',
+                     'CLEANRUA_MODEL_NAME': 'test-model'}
+        with mock.patch.dict(os.environ, variables):
+            agent = direct.RUAgent(direct.Args(tool_choice='auto', reasoning_effort='xhigh'), tools=[])
+        agent.client = httpx.Client(base_url=agent.client.base_url, transport=httpx.MockTransport(handler))
+        obs, _ = direct.RoboDojoWrapper(FakeRoboDojo()).reset()
+        agent.reset('Task: stack the bowls.', step_limit=800)
+        self.assertEqual(agent.get_action(obs), {'name': 'capture_scene', 'arguments': '{}'})
+        self.assertEqual([(r['tool_choice'], r['reasoning_effort']) for r in requests], [('auto', 'xhigh')] * 2)
+        self.assertEqual([m['role'] for m in requests[1]['messages'][-2:]], ['assistant', 'user'])
+        self.assertEqual((agent.last_usage['total_tokens'], agent.usage['requests'], agent.usage['images']), (20, 2, 1))
 
     def test_unlimited_history_keeps_every_pair(self):
         requests = []

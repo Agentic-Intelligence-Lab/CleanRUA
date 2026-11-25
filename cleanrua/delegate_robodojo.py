@@ -57,6 +57,11 @@ class Args:
     """name of the environment variable holding the API key"""
     provider: Literal['openai-compatible', 'aliyun'] = 'openai-compatible'
     """`aliyun` additionally disables thinking"""
+    reasoning_effort: str | None = None
+    """reasoning effort sent with every request, such as 'high' or 'xhigh'; None uses the provider's default"""
+    tool_choice: Literal['required', 'auto'] = 'required'
+    """'auto' for providers that refuse 'required' while reasoning, such as Qwen; a reply without a tool call is asked
+    again, at most twice"""
     history_size: int | None = 4
     """number of past tool call/result pairs kept in context (text only, no old images); None keeps all"""
     max_output_tokens: int = 1024
@@ -355,25 +360,34 @@ class RUAgent:
                 'url': 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()}}]
         messages = [{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': self.task},
                     *(message for pair in self.history for message in pair), {'role': 'user', 'content': content}]
-        body = {'model': self.model, 'messages': messages, 'tools': self.tools, 'tool_choice': 'required',
+        body = {'model': self.model, 'messages': messages, 'tools': self.tools, 'tool_choice': self.args.tool_choice,
                 'parallel_tool_calls': False, 'max_tokens': self.args.max_output_tokens, 'stream': False}
         if self.args.provider == 'aliyun':
             body['enable_thinking'] = False
-        start = time.time()
-        response = self.client.post('chat/completions', json=body)  # A failed request ends the episode.
-        response.raise_for_status()
-        reply = response.json()
-        usage = reply['usage']
-        self.last_usage = {
-            'total_tokens': usage.get('total_tokens') or 0, 'prompt_tokens': usage.get('prompt_tokens') or 0,
-            'completion_tokens': usage.get('completion_tokens') or 0,
-            'cached_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0,
-            'reasoning_tokens': (usage.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0}
-        self.usage.update(requests=1, images=len(observation['cameras']), model_s=time.time() - start,
-                          **self.last_usage)
-        self.message = reply['choices'][0]['message']
-        if not self.message.get('tool_calls'):
+        if self.args.reasoning_effort:
+            body['reasoning_effort'] = self.args.reasoning_effort
+        self.last_usage = Counter()  # Of this decision, over every request it took.
+        for _ in range(3):  # With tool_choice 'auto' the model may answer in text alone: ask again.
+            start = time.time()
+            response = self.client.post('chat/completions', json=body)  # A failed request ends the episode.
+            response.raise_for_status()
+            reply = response.json()
+            usage = reply['usage']
+            self.last_usage.update({
+                'total_tokens': usage.get('total_tokens') or 0, 'prompt_tokens': usage.get('prompt_tokens') or 0,
+                'completion_tokens': usage.get('completion_tokens') or 0,
+                'cached_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0,
+                'reasoning_tokens': (usage.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0})
+            self.usage.update(requests=1, model_s=time.time() - start)
+            self.message = reply['choices'][0]['message']
+            if self.message.get('tool_calls'):
+                break
+            body['messages'] = [*body['messages'], {'role': 'assistant', 'content': self.message.get('content') or ''},
+                                {'role': 'user', 'content': 'Reply with exactly one tool call.'}]
+        else:
             raise RuntimeError(f'The model replied without a tool call: {self.message.get("content")!r}')
+        self.last_usage = dict(self.last_usage)
+        self.usage.update(images=len(observation['cameras']), **self.last_usage)
         call = self.message['tool_calls'][0]  # Only the first call is executed and kept in history.
         self.pending = {'role': 'assistant', 'content': self.message.get('content'), 'tool_calls': [call]}
         return {'name': call['function']['name'], 'arguments': call['function']['arguments']}
@@ -457,6 +471,8 @@ if __name__ == '__main__':
             else:
                 stop_reason = f'model_error: {type(exc).__name__}'
                 model_error_detail = str(exc)[:300]
+        except RuntimeError as exc:  # The model kept answering without a tool call: the episode ends, recorded.
+            stop_reason, model_error_detail = 'model_error: no tool call', str(exc)[:300]
 
         verdict = env.unwrapped.evaluate()  # Official outcome; never shown to the agent.
         result = {'algorithm': args.exp_name, 'task': args.task, 'model': agent.model, 'commit': commit,
