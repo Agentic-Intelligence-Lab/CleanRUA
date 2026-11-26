@@ -51,6 +51,22 @@ python -m realworld check --config "$STATION" --out "$CHECK_DIR"
 
 核对 `$CHECK_DIR/result.json` 中 `result.arms` 的实测位姿和末端状态，并打开每个 `<视角名>.png` 核对内容、颜色和相机名称。此检查无需模型密钥；驱动构造和读取应只连接设备并返回状态。省略 `--config` 会使用内置模拟设备。每次 `--out` 请使用新目录。
 
+### 遥操采点并写入工作区
+
+初次标定可以先省略待测臂的 `workspace_m`。启动自己的遥操或示教工具，在另一个配置好驱动路径的终端运行：
+
+```bash
+python -m realworld calibrate-workspace --config "$STATION" --arm left
+```
+
+单臂可省略 `--arm`；双臂每次明确选择 `left` 或 `right`。采点程序只打开所选臂的位置读取接口，无需相机、模型或 `--enable-motion`。如果遥操已独占 SDK 连接，可在该臂的 JSON 下添加可选的 `state_reader`，用 `driver` 和 `args` 指向订阅遥操反馈的现场驱动。它的 `state()` 应返回同一个基座系、同一个 TCP 的实测六维 `pose`，构造和关闭均不应接管机械臂。
+
+1. 用遥操将 TCP 移到任务所需边界，停稳后按一次 **回车**。终端显示点号和基座系 XYZ（米）。依次覆盖 X、Y、Z 的两端。
+2. 输入 `done`。程序对所有采样点逐轴取最小值、最大值，显示旧值和新值 `[[xmin, ymin, zmin], [xmax, ymax, zmax]]`。任一轴跨度为零时可以继续采点。
+3. 确认这个长方体适合当前工具、桌面和夹具后输入 `y`，写回所选臂的 `workspace_m`。采点中输入 `q`、按 Ctrl-C，或在确认时直接回车，都会保留原配置。
+
+这个边界框用于约束 TCP 的当前位置和目标位置；采点本身无法验证框内所有姿态可达或整臂路径无碰撞。再次启动实验时会加载新边界。两条臂可分别标定。
+
 ## 4. 用 API 运行 CaP 并生成控制器
 
 准备一个支持图像输入和工具调用的模型。输入供应商的 API 基地址（含 `/v1`）、模型 ID、本局任务和密钥。下面的 `--enable-motion` 会允许模型通过上述工作站配置指挥设备，请在现场已可执行任务时运行。
@@ -173,4 +189,5 @@ CLEANRUA_DECISION_BACKEND=codex python -m realworld.direct \
 | `model.py`、`policy.py` | 分别连接决策模型和动作策略。 |
 | `program.py` | 在隔离 Python 会话中执行 CaP 程序，经父进程访问工作站。 |
 | `workstation.py`、`env.py` | 按 JSON 导入现场驱动，提供统一的观测、运动校验、执行与回读。 |
+| `calibration.py` | 遥操时读取所选臂的 TCP，计算并按确认结果保存工作区。 |
 | `__main__.py` | 四种方法的命令行入口、只读检查和受信任策略回放。 |

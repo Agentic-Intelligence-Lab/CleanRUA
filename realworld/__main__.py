@@ -49,8 +49,9 @@ def module_main(method):
 
 def main(argv=None, *, standalone=False):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("mode", nargs="?", help="check, replay, an algorithm name, or trusted module:function")
+    parser.add_argument("mode", nargs="?", help="check, calibrate-workspace, replay, an algorithm name, or trusted module:function")
     parser.add_argument("--config", type=Path, help="Trusted workstation JSON; omit for offline fixtures")
+    parser.add_argument("--arm", choices=("left", "right"), help="Arm to sample with calibrate-workspace")
     parser.add_argument("--enable-motion", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--out", type=Path, help="New directory for this run")
     parser.add_argument("--output-dir", type=Path, default=Path("runs"))
@@ -63,6 +64,17 @@ def main(argv=None, *, standalone=False):
     parser.add_argument("--reasoning-effort", help="Provider-supported effort or default")
     parser.add_argument("--base-url", help="Compatible API or local server URL")
     args = parser.parse_args(argv)
+    if args.mode == "calibrate-workspace":
+        if not args.config or args.enable_motion:
+            parser.error("calibrate-workspace requires --config and is read-only on the hardware")
+        from realworld.calibration import calibrate_workspace
+        try:
+            calibrate_workspace(args.config, args.arm)
+        except (OSError, ValueError) as exc:
+            parser.exit(1, f"{exc}\n")
+        return
+    if args.arm is not None:
+        parser.error("--arm is only used by calibrate-workspace")
     if args.mode is None:
         try:
             args.mode = input("Method (direct / cap / delegate / monitor) [direct]: ").strip() or "direct"
