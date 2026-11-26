@@ -1,5 +1,6 @@
 """Run a workstation agent episode and record observable actions and receipts."""
 import json
+from itertools import count
 import time
 
 from PIL import Image
@@ -14,6 +15,8 @@ def public_profiles(profiles):
 
 
 def run_episode(env, system, task, run_dir, decide, max_decisions):
+    if max_decisions < 0:
+        raise ValueError("max_decisions must be nonnegative; 0 means unlimited")
     public = public_profiles(env.env.profiles)
     agent = RUAgent(task, system + " Station: " + json.dumps(public), env.schemas(), decide)
     with (run_dir / "trajectory.jsonl").open("x") as log:
@@ -26,7 +29,7 @@ def run_episode(env, system, task, run_dir, decide, max_decisions):
         try:
             obs, _ = env.reset()
             reason = "max_decisions"
-            for turn in range(max_decisions):
+            for turn in (count() if max_decisions == 0 else range(max_decisions)):
                 images = {}
                 for name, rgb in obs["images"].items():
                     images[name] = f"{name}-{turn:03}.png"

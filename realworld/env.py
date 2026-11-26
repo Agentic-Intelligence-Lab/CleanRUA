@@ -48,6 +48,9 @@ class Bench(gym.Env):
                 fields[kind] = spaces.Box(lo, hi, dtype=np.float64)
             elif kind != "none":
                 raise ValueError("Unknown end effector")
+            for name in ("arrival_translation_m", "arrival_rotation_rad"):
+                if name in p and not (np.isfinite(p[name]) and p[name] > 0):
+                    raise ValueError(f"Invalid {name}")
             action_spaces[side] = PartialDict(fields)
             bounds = p.get("workspace_m")
             if bounds is not None:
@@ -167,7 +170,10 @@ class Bench(gym.Env):
                     arm.move_pose(pose)
                     actual = vector(arm.state()["pose"], 6)
                     error = Rotation.from_euler("xyz", pose[3:]).inv() * Rotation.from_euler("xyz", actual[3:])
-                    if np.linalg.norm(actual[:3]-pose[:3]) > 0.002 or error.magnitude() > 0.05:
+                    profile = self.profiles[side]
+                    translation_tolerance = profile.get("arrival_translation_m", 0.002)
+                    rotation_tolerance = profile.get("arrival_rotation_rad", 0.05)
+                    if np.linalg.norm(actual[:3]-pose[:3]) > translation_tolerance or error.magnitude() > rotation_tolerance:
                         raise RuntimeError("End effector outside arrival tolerance")
                 if "gripper" in cmd and abs(cmd["gripper"] - current[side]["gripper"]) > .01:
                     result = arm.set_gripper(cmd["gripper"])

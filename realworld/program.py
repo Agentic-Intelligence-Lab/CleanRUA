@@ -17,7 +17,7 @@ def program_worker():
     import numpy as np
 
     MAX_PACKET = 65536
-    resource.setrlimit(resource.RLIMIT_AS, (1024**3, 1024**3))
+    resource.setrlimit(resource.RLIMIT_AS, (2 * 1024**3, 2 * 1024**3))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     channel = socket.socket(fileno=0)
 
@@ -68,6 +68,7 @@ def program_worker():
 class ProgramSession:
     def __init__(self, bench):
         self.bench = bench
+        self.motion_fault = None
         self.channel, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         worker = inspect.getsource(program_worker) + "\nprogram_worker()\n"
         command = ["bwrap", "--die-with-parent", "--new-session", "--unshare-all",
@@ -94,7 +95,7 @@ class ProgramSession:
         payload = json.dumps({"code": code}).encode()
         if len(payload) >= 65536:
             raise InvalidTarget("Program exceeds packet limit")
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + 600
         self.channel.send(payload)
         for _ in range(129):
             remaining = deadline - time.monotonic()
@@ -106,7 +107,12 @@ class ProgramSession:
                 raise RuntimeError("Isolated Python worker exited")
             message = json.loads(packet)
             if "done" in message:
-                return message["done"]
+                result = message["done"]
+                if self.motion_fault is not None:
+                    result["motion_fault"] = self.motion_fault
+                    result["motion_enabled"] = False
+                    result["recovery_required"] = True
+                return result
             args = message.get("args", {})
             try:
                 if message["method"] == "observe" and not args:
@@ -126,7 +132,25 @@ class ProgramSession:
                 if message["method"] == "state" and isinstance(args, dict) and set(args) <= {"side"}:
                     value = self.bench.state(**args)
                 elif message["method"] == "move" and isinstance(args, dict) and set(args) <= {"pose","gripper","side","hand"}:
-                    value = self.bench.move(**args)
+                    if self.motion_fault is not None:
+                        raise InvalidTarget("Motion paused after hardware failure; operator recovery required")
+                    try:
+                        value = self.bench.move(**args)
+                    except InvalidTarget:
+                        raise
+                    except Exception as exc:
+                        if self.bench.motion_enabled:
+                            raise
+                        self.motion_fault = {"error": f"{type(exc).__name__}: {exc}",
+                                             "requested_move": args}
+                        try:
+                            self.motion_fault["measured_state"] = self.bench.state()
+                        except Exception as state_error:
+                            self.motion_fault["state_error"] = str(state_error)
+                        response = {"error": "Motion paused; operator recovery required. " +
+                                    self.motion_fault["error"]}
+                        self.channel.send(json.dumps(response, allow_nan=False).encode())
+                        continue
                 else:
                     raise InvalidTarget("Unknown robot operation")
                 response = {"result": value}

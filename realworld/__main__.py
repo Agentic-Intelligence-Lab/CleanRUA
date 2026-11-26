@@ -55,7 +55,7 @@ def main(argv=None, *, standalone=False):
     parser.add_argument("--enable-motion", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--out", type=Path, help="New directory for this run")
     parser.add_argument("--output-dir", type=Path, default=Path("runs"))
-    parser.add_argument("--max-decisions", type=int, default=30)
+    parser.add_argument("--max-decisions", type=int, default=30, help="Maximum decisions; 0 means unlimited")
     parser.add_argument("--policy-config", type=Path, help="Action policy client configuration")
     parser.add_argument("--policy", type=Path)
     parser.add_argument("--task")

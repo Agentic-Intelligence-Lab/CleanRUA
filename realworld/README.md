@@ -30,6 +30,7 @@ python -m realworld check --out "runs/offline-$(date +%s)"
 | `arms.left`、`arms.right` | 按实际臂数保留相应的键。每侧填写 `driver`、`args` 和 `end_effector`（`gripper`、`hand` 或 `none`）。 |
 | 每侧的 `workspace_m` | 两个三元素数组 `[[xmin, ymin, zmin], [xmax, ymax, zmax]]`，采用该臂基座系和现场可用范围，单位米。 |
 | 每侧的 `max_translation_m`、`max_rotation_rad` | 单步允许的三维位移长度和相对旋转角，分别以米、弧度表示，均为正数。 |
+| 每侧可选的 `arrival_translation_m`、`arrival_rotation_rad` | 运动完成后，实测 TCP 与目标之间允许的位置和姿态误差。缺省分别为 0.002 m 和 0.05 rad；单步上限和设备控制器保护独立生效。 |
 | 每侧可选的 `tool` | 外接末端填写自己的 `driver` 和 `args`。灵巧手还需在臂配置中提供 `hand_limits_rad: [下界数组, 上界数组]`，顺序与驱动一致。 |
 | `cameras` | 以视角名为键，每路填写 `driver` 和 `args`。名称可用英文字母、数字、下划线和连字符；观测、发给模型的图像和保存的 PNG 均使用同一名称。 |
 
@@ -109,6 +110,8 @@ python -m realworld replay --config "$STATION" --enable-motion \
 
 ## 运行算法
 
+`--max-decisions` 默认最多 30 轮；正整数指定轮数，显式传 `0` 则持续决策，直到方法结束、环境终止或出现未处理异常。
+
 运行 `python -m realworld` 进入真机菜单，按提示选择算法、工作站和本轮自然语言任务。回车选择 Direct 和模拟设备；指定设备配置后须显式启用运动。Delegate 和 Monitor 可使用工作站内的动作策略或单独指定策略 JSON。
 
 菜单和命令行默认使用 `api`，可通过 `--backend`、菜单或 `CLEANRUA_DECISION_BACKEND` 显式选择其他后端。API、local 和 Codex 的默认模型分别读取 `CLEANRUA_MODEL_NAME`、`CLEANRUA_LOCAL_MODEL` 和 `CLEANRUA_CODEX_MODEL`，Codex 未指定模型时由 CLI 选择。API 和 local 需提供服务所部署的模型 ID。思考强度读取 `CLEANRUA_REASONING_EFFORT`，缺省为 `default`，由模型服务决定。显式传入 `--reasoning-effort default` 也可恢复服务默认。支持的强度值取决于模型。
@@ -163,6 +166,8 @@ python -m realworld.monitor --task "Place the block in the tray" --policy-config
 `robot.observe()` 在 CaP 程序与受信任文件回放中返回相同结构：按名称索引的 arms 与 images 和接收时间戳。单臂和双臂都用 `obs["arms"][side]["pose"]`；只读某只臂可用 `robot.state(side=side)`。无参 state() 保留旧策略的数据格式。设备可返回 NumPy 数组或标量，公开的具名臂数据使用普通列表和数值。隔离的 CaP 程序可读取完整 RGB 像素，程序代码只通过父进程请求设备操作。
 
 设备执行异常时，本次命令选中的臂收到 stop，本次会话随后拒绝运动。工作站级硬件联停由现场控制系统负责。
+
+CaP 单个代码块的等待预算为 600 秒，隔离进程虚拟地址空间上限为 2 GiB。若运动异常已触发环境的运动锁，代码块回执会携带 `motion_fault`、`motion_enabled=false` 和 `recovery_required=true`。回执包含当时请求的动作及可读的实测状态；状态读取失败时记录读取错误。当前会话后续的移动请求会被拒绝。
 
 自定义算法使用可信模块的 `module:function` 入口。函数接收 `(bench, task, run_dir, *, max_decisions)`，返回结束原因。需要 VLA 的算法在签名中额外声明关键字参数 `policy`，启动器从策略配置注入 ChunkPolicy。仓库内的 `direct` 等名称继续按 `realworld.<方法>:run_<方法>` 解析。选择新算法和替换相机、臂、末端是相互独立的操作。
 
