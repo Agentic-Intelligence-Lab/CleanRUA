@@ -7,6 +7,7 @@
     python -m realworld replay --policy RUN_DIR/controller.py --config station.json --enable-motion
 
 Install numpy, scipy, pillow, gymnasium, httpx and jsonschema.
+Delegate uses vla(instruction, steps); Monitor uses run_policy(steps) with the original task.
 Select direct, cap, delegate or monitor. Set CLEANRUA_BASE_URL, CLEANRUA_MODEL_NAME and
 CLEANRUA_API_KEY for an API endpoint with vision and tool calls. Delegate and Monitor
 also require a configured action policy. CaP executes generated code in a Linux
@@ -50,7 +51,6 @@ from jsonschema import Draft7Validator, ValidationError
 from scipy.spatial.transform import Rotation
 
 from cleanrua import cap, delegate, direct, monitor
-from cleanrua.direct import look
 
 
 # Workstation observations, actions and measured receipts
@@ -112,11 +112,12 @@ class Bench(gym.Env):
                     raise ValueError(f"Invalid {name}")
         self.action_space = PartialDict(action_spaces)
         obs = self.observe()
+        arms_space = spaces.Dict({side: spaces.Dict({
+            key: spaces.Box(-np.inf, np.inf, np.shape(value), np.float64)
+            for key, value in state.items()}) for side, state in obs["arms"].items()})
         self.observation_space = spaces.Dict({
             "images": spaces.Dict({k: spaces.Box(0, 255, a.shape, np.uint8) for k, a in obs["images"].items()}),
-            "arms": spaces.Dict({side: spaces.Dict({
-                key: spaces.Box(-np.inf, np.inf, np.shape(value), np.float64)
-                for key, value in state.items()}) for side, state in obs["arms"].items()}),
+            "arms": arms_space, "state": next(iter(arms_space.spaces.values())) if len(self.arms) == 1 else arms_space,
             "rgb_received_ns": spaces.Dict({k: spaces.Discrete(2**63-1) for k in cameras}),
             "state_received_ns": spaces.Discrete(2**63-1)})
 
@@ -157,7 +158,7 @@ class Bench(gym.Env):
                 raise ValueError(f"Invalid RGB image from {name}")
             images[name], stamps[name] = rgb, time.monotonic_ns()
         states = {s: self._arm_state(s) for s in self.arms}
-        return {"images": images, "arms": states,
+        return {"images": images, "arms": states, "state": self._receipt(states),
                 "rgb_received_ns": stamps, "state_received_ns": time.monotonic_ns()}
 
     def reset(self, *, seed=None, options=None):
@@ -543,6 +544,10 @@ def mllm(messages, tools):
         raise ValueError("Configure the served model ID or pass --model")
     if url.rstrip("/") == "https://api.openai.com/v1" and settings["model"] == "gpt-6.2-astra":
         return responses_decision(messages, tools, settings, key)
+    # The prototype reads the three CLEANRUA API variables and always sends cap.TOOLS.
+    if (tools is cap.TOOLS and settings["decision_backend"] == "api"
+            and settings["reasoning_effort"] == "default" and os.getenv("CLEANRUA_API_KEY")):
+        return cap.mllm(messages)
     body = {"model": settings["model"], "messages": messages, "tools": tools,
             "tool_choice": "required", "stream": False}
     if settings["reasoning_effort"] != "default":
@@ -601,7 +606,10 @@ class ChunkPolicy:
             raise ValueError("actions_per_chunk must be an integer in [1,300]")
         if not np.isfinite(control_hz) or control_hz <= 0:
             raise ValueError("control_hz must be positive and finite")
-        self.client, self.horizon, self.period = client, actions_per_chunk, 1 / control_hz
+        self.predict = client.predict if hasattr(client, "predict") else client
+        if not callable(self.predict):
+            raise TypeError("Expected policy(observation, instruction) or a client with predict()")
+        self.horizon, self.period = actions_per_chunk, 1 / control_hz
         self.next_step = 0.
 
     def run(self, env, instruction, steps, active_groups=None, trace=None):
@@ -616,7 +624,7 @@ class ChunkPolicy:
         obs = env.observe()
         result = {"instruction": instruction, "active_groups": sides, "steps": 0, "inferences": 0}
         while result["steps"] < steps:
-            raw = self.client.predict(obs, instruction)
+            raw = self.predict(obs, instruction)
             result["inferences"] += 1
             if not isinstance(raw, (list, tuple)) or not raw or not all(isinstance(step, dict) for step in raw):
                 raise ValueError("Policy must return a nonempty sequence of named arm commands")
@@ -643,11 +651,11 @@ class ChunkPolicy:
         return {**result, "stop_reason": "step_budget"}, obs
 
 
-def load_policy(station, path=None):
+def load_policy(station, path=None, *, default_horizon=delegate.ACTIONS_PER_CHUNK):
     spec = json.loads(Path(path).read_text()) if path else (station or {}).get("policy")
     if not spec:
         raise ValueError("Supply --policy-config or the workstation's policy section")
-    return ChunkPolicy(device(spec), spec["actions_per_chunk"], spec["control_hz"])
+    return ChunkPolicy(device(spec), spec.get("actions_per_chunk", default_horizon), spec["control_hz"])
 
 
 # CaP isolated program execution
@@ -812,6 +820,8 @@ METHODS = {"direct": direct, "cap": cap, "delegate": delegate, "monitor": monito
 
 
 def tool_schemas(method, profiles):
+    if method == "cap":
+        return cap.TOOLS
     tools = deepcopy(METHODS[method].TOOLS)
     sides = list(profiles)
     grippers = [s for s in sides if profiles[s]["end_effector"] == "gripper"]
@@ -838,7 +848,6 @@ def tool_schemas(method, profiles):
         elif fn["name"] == "grip" and len(grippers) > 1:
             schema["required"].append("side")
         elif fn["name"] == "vla":
-            fn["name"] = "actor_act"
             fields["instruction"]["minLength"] = 1
             fields["active_groups"] = {"type": "array", "minItems": 1, "uniqueItems": True,
                                        "items": side_schema}
@@ -857,7 +866,8 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
         raise ValueError("Configure the action policy for this method")
     profiles = public_profiles(bench.profiles)
     tools = tool_schemas(algorithm, profiles)
-    schemas = {t["function"]["name"]: Draft7Validator(t["function"]["parameters"]) for t in tools}
+    schemas = {t["function"]["name"]: Draft7Validator({**t["function"]["parameters"], "additionalProperties": False})
+               for t in tools}
     backend = decide if decide is not None else configured_decider(tools)
     system = METHODS[algorithm].SYSTEM + (
         " Use the latest measured base-frame TCP. Respect the configured workspace, total 3D "
@@ -885,7 +895,7 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
                 record(turn=turn, task=task, images=images, arms=obs["arms"],
                        rgb_received_ns=obs["rgb_received_ns"], state_received_ns=obs["state_received_ns"])
                 messages = [{"role": "system", "content": system}, {"role": "user", "content": task},
-                            *history[-8:], look({"images": obs["images"], "state": obs["arms"]})]
+                            *history[-8:], METHODS[algorithm].look(obs)]
                 reply = backend(messages) if backend is not None else mllm(messages, tools)
                 call = reply["tool_calls"][0]
                 fn = call["function"]
@@ -894,6 +904,8 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
                 record(turn=turn, request=fn)
                 obs = None
                 try:
+                    if algorithm == "delegate" and name == "actor_act":  # Older workstation decision clients.
+                        name = "vla"
                     if name not in schemas:
                         raise InvalidTarget(f"Unknown tool {name}")
                     args = json.loads(fn["arguments"])
@@ -911,7 +923,7 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
                             program = ProgramSession(bench)
                         result = program.execute(args["code"])
                     else:
-                        instruction = args["instruction"] if name == "actor_act" else task
+                        instruction = args["instruction"] if name == "vla" else task
                         result, obs = policy.run_observed(bench, instruction, args["steps"], args.get("active_groups"),
                                                          trace=lambda **event: record(turn=turn, **event))
                 except (ValidationError, InvalidTarget, json.JSONDecodeError) as exc:
@@ -1080,7 +1092,7 @@ def main(argv=None):
                           "out": str(args.out), **settings}, ensure_ascii=False), flush=True)
     config = json.loads(args.config.read_text())
     needs_policy = args.mode in ("delegate", "monitor")
-    policy = load_policy(config, args.policy_config) if needs_policy else None
+    policy = load_policy(config, args.policy_config, default_horizon=METHODS[args.mode].ACTIONS_PER_CHUNK) if needs_policy else None
     args.out.mkdir(parents=True, exist_ok=False)
     bench = workstation(config, args.enable_motion)
     try:
