@@ -23,8 +23,10 @@ driver modules importable on PYTHONPATH. A configured workstation is required fo
 """
 import argparse
 import ast
+from contextlib import ExitStack
 from copy import deepcopy
 import base64
+from functools import partial
 from importlib import import_module
 import inspect
 import io
@@ -75,11 +77,12 @@ class PartialDict(spaces.Dict):
 
 
 class Bench(gym.Env):
-    def __init__(self, arms, cameras, profiles, *, motion_enabled=False):
+    def __init__(self, arms, cameras, profiles, *, motion_enabled=False, tools=None):
         if not arms or not set(arms) <= {"left", "right"} or set(arms) != set(profiles):
             raise ValueError("Configure left and/or right arm with matching profiles")
         self.arms, self.cameras, self.profiles = arms, cameras, profiles
         self.motion_enabled = motion_enabled
+        self.tools = tools or {}
         action_spaces = {}
         self.hand_limits = {}
         for side, p in profiles.items():
@@ -117,13 +120,16 @@ class Bench(gym.Env):
             for key, value in state.items()}) for side, state in obs["arms"].items()})
         self.observation_space = spaces.Dict({
             "images": spaces.Dict({k: spaces.Box(0, 255, a.shape, np.uint8) for k, a in obs["images"].items()}),
-            "arms": arms_space, "state": next(iter(arms_space.spaces.values())) if len(self.arms) == 1 else arms_space,
+            "arms": arms_space, "state": self._receipt(arms_space),
             "rgb_received_ns": spaces.Dict({k: spaces.Discrete(2**63-1) for k in cameras}),
             "state_received_ns": spaces.Discrete(2**63-1)})
 
     def _arm_state(self, side):
         """Convert SDK arrays/scalars once, at the driver boundary."""
         raw = self.arms[side].state()
+        if side in self.tools:
+            kind = self.profiles[side]["end_effector"]
+            raw = {**raw, kind: self.tools[side].state()[kind]}
         state = {"pose": vector(raw["pose"], 6).tolist()}
         if "joints" in raw:
             joints = np.asarray(raw["joints"])
@@ -166,11 +172,10 @@ class Bench(gym.Env):
         return self.observe(), {}
 
     def close(self):
-        for camera in self.cameras.values():
-            camera.close()
-        for arm in self.arms.values():
-            if callable(getattr(arm, "close", None)):
-                arm.close()
+        with ExitStack() as stack:
+            for device in (*self.arms.values(), *self.tools.values(), *self.cameras.values()):
+                if callable(getattr(device, "close", None)):
+                    stack.callback(device.close)
 
     def _validate(self, side, target, current):
         fields = self.action_space[side].spaces
@@ -214,6 +219,7 @@ class Bench(gym.Env):
         try:
             for side, cmd in commands.items():
                 arm = self.arms[side]
+                tool = self.tools.get(side, arm)
                 pose = cmd.get("pose")
                 if pose is not None and not np.allclose(pose, current[side]["pose"], rtol=0, atol=1e-9):
                     arm.move_pose(pose)
@@ -225,19 +231,21 @@ class Bench(gym.Env):
                     if np.linalg.norm(actual[:3]-pose[:3]) > translation_tolerance or error.magnitude() > rotation_tolerance:
                         raise RuntimeError("End effector outside arrival tolerance")
                 if "gripper" in cmd and abs(cmd["gripper"] - current[side]["gripper"]) > .01:
-                    result = arm.set_gripper(cmd["gripper"])
+                    result = tool.set_gripper(cmd["gripper"])
                     if isinstance(result, dict):
                         gripper_results[side] = result
                 if "hand" in cmd and not np.array_equal(cmd["hand"], current[side]["hand"]):
-                    arm.set_hand(cmd["hand"].tolist())
+                    tool.set_hand(cmd["hand"].tolist())
             return readback(), gripper_results
         except BaseException:
             self.motion_enabled = False
             for side in selected:
-                try:
-                    self.arms[side].stop()
-                except Exception as stop_error:
-                    warnings.warn(f"Stop failed on {side}: {stop_error}")
+                devices = [self.arms[side]] + ([self.tools[side]] if side in self.tools else [])
+                for device in devices:
+                    try:
+                        device.stop()
+                    except Exception as stop_error:
+                        warnings.warn(f"Stop failed on {side}: {stop_error}")
             raise
 
     def move(self, pose, gripper=None, *, side=None, hand=None):
@@ -281,80 +289,40 @@ def device(spec):
     return factory(**spec.get("args", {}))
 
 
-class ArmWithTool:
-    def __init__(self, arm, tool, kind):
-        self.arm, self.tool, self.kind = arm, tool, kind
-
-    def state(self):
-        return {**self.arm.state(), self.kind: self.tool.state()[self.kind]}
-
-    def move_pose(self, pose):
-        self.arm.move_pose(pose)
-
-    def set_hand(self, joints):
-        self.tool.set_hand(joints)
-
-    def set_gripper(self, opening):
-        return self.tool.set_gripper(opening)
-
-    def close(self):
-        if hasattr(self.tool, "close"):
-            self.tool.close()
-
-    def stop(self):
-        try:
-            self.arm.stop()
-        finally:
-            self.tool.stop()
-
-
-def require_methods(driver, methods, label):
-    missing = [m for m in methods if not callable(getattr(driver, m, None))]
-    if missing:
-        raise ValueError(f"{label} driver must implement {', '.join(missing)}")
-
-
 def workstation(config, motion_enabled=False):
-    arms, cameras = {}, {}
+    arms, cameras, tools = {}, {}, {}
     if not config or "arms" not in config:
         raise ValueError("Workstation JSON requires named arms with explicit driver and args")
-    try:
-        for side, p in config["arms"].items():
-            arm = device(p)
-            required = ("state", "move_pose", "stop") if motion_enabled else ("state",)
-            require_methods(arm, required, side)
-            kind = p["end_effector"]
-            if "tool" in p:
+    with ExitStack() as pending:
+        def load(spec, methods):
+            obj = device(spec)
+            if callable(getattr(obj, "close", None)):
+                pending.callback(obj.close)
+            for method in methods:
+                if not callable(getattr(obj, method, None)):
+                    raise ValueError(f"{spec['driver']} must implement {method}()")
+            return obj
+
+        for side, profile in config["arms"].items():
+            kind = profile["end_effector"]
+            methods = ["state", "move_pose", "stop"] if motion_enabled else ["state"]
+            if motion_enabled and "tool" not in profile and kind in ("gripper", "hand"):
+                methods.append(f"set_{kind}")
+            arms[side] = load(profile, methods)
+            if "tool" in profile:
                 if kind not in ("gripper", "hand"):
                     raise ValueError(f"Unexpected tool for {side}: {kind}")
-                tool = device(p["tool"])
-                required = ("state", f"set_{kind}", "stop") if motion_enabled else ("state",)
-                require_methods(tool, required, f"{side} {kind}")
+                tool = load(profile["tool"], ["state", f"set_{kind}", "stop"] if motion_enabled else ["state"])
                 if motion_enabled and hasattr(tool, "check_motion_ready"):
-                    try:
-                        tool.check_motion_ready()
-                    except Exception:
-                        if hasattr(tool, "close"):
-                            tool.close()
-                        raise
-                arm = ArmWithTool(arm, tool, kind)
-            elif motion_enabled and kind in ("gripper", "hand"):
-                require_methods(arm, (f"set_{kind}",), side)
-            arms[side] = arm
+                    tool.check_motion_ready()
+                tools[side] = tool
         for name, spec in config["cameras"].items():
             if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
                 raise ValueError(f"Invalid camera name {name!r}")
-            camera = device(spec)
-            require_methods(camera, ("read", "close"), name)
-            cameras[name] = camera
-        return Bench(arms, cameras, config["arms"], motion_enabled=motion_enabled)
-    except BaseException:
-        for camera in cameras.values():
-            camera.close()
-        for arm in arms.values():
-            if isinstance(arm, ArmWithTool):
-                arm.close()
-        raise
+            cameras[name] = load(spec, ["read", "close"])
+        bench = Bench(arms, cameras, config["arms"], motion_enabled=motion_enabled, tools=tools)
+        pending.pop_all()  # Bench now owns the devices.
+        return bench
 
 
 # Teleoperated workspace calibration
@@ -385,6 +353,20 @@ def collect_workspace_points(reader):
             print("请输入 done、q，或直接按回车。")
 
 
+def publish_text(path, text, *, replace=False):
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as tmp:
+        try:
+            tmp.write(text)
+            tmp.flush()
+            if replace:
+                os.fchmod(tmp.fileno(), stat.S_IMODE(path.stat().st_mode))
+                os.replace(tmp.name, path)
+            else:
+                os.link(tmp.name, path)  # A concurrently saved controller wins.
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+
+
 def save_workspace(path, original, config):
     import fcntl
 
@@ -393,15 +375,7 @@ def save_workspace(path, original, config):
         fcntl.flock(lock, fcntl.LOCK_EX)
         if path.read_bytes() != original:
             raise ValueError("配置在采点期间已被修改，请重新读取后再标定。")
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, delete=False) as tmp:
-            try:
-                json.dump(config, tmp, ensure_ascii=False, indent=2, allow_nan=False)
-                tmp.write("\n")
-                tmp.flush()
-                os.fchmod(tmp.fileno(), stat.S_IMODE(path.stat().st_mode))
-                os.replace(tmp.name, path)
-            finally:
-                Path(tmp.name).unlink(missing_ok=True)
+        publish_text(path, json.dumps(config, ensure_ascii=False, indent=2, allow_nan=False) + "\n", replace=True)
 
 
 def calibrate_workspace(path, side=None):
@@ -481,12 +455,8 @@ def configure_decision(backend, model, reasoning_effort, base_url):
     backend = backend or decision_settings()["decision_backend"]
     if backend not in MODEL_KEYS and ":" not in backend:
         raise ValueError("Choose api, local or module:factory")
-    if model and backend not in MODEL_KEYS:
+    if backend not in MODEL_KEYS and any((model, base_url, reasoning_effort)):
         raise ValueError("Configure custom models through their backend factory")
-    if base_url and backend not in ("api", "local"):
-        raise ValueError("--base-url applies to api and local backends")
-    if reasoning_effort and backend not in MODEL_KEYS:
-        raise ValueError("Configure reasoning effort through the custom backend factory")
     os.environ["CLEANRUA_DECISION_BACKEND"] = backend
     if model:
         os.environ[MODEL_KEYS[backend]] = model
@@ -562,7 +532,7 @@ def mllm(messages, tools):
 def configured_decider(tools):
     name = os.getenv("CLEANRUA_DECISION_BACKEND", "api")
     if name in ("api", "local"):
-        return None
+        return partial(mllm, tools=tools)
     module, sep, factory = name.partition(":")
     if not sep:
         raise ValueError("Decision backend must be api, local or a trusted module:factory")
@@ -611,10 +581,6 @@ class ChunkPolicy:
             raise TypeError("Expected policy(observation, instruction) or a client with predict()")
         self.horizon, self.period = actions_per_chunk, 1 / control_hz
         self.next_step = 0.
-
-    def run(self, env, instruction, steps, active_groups=None, trace=None):
-        feedback, _ = self.run_observed(env, instruction, steps, active_groups, trace)
-        return feedback
 
     def run_observed(self, env, instruction, steps, active_groups=None, trace=None):
         """Return both the policy feedback and the observation used for its last receipt."""
@@ -800,10 +766,7 @@ class ProgramSession:
                             self.motion_fault["measured_state"] = self.bench.state()
                         except Exception as state_error:
                             self.motion_fault["state_error"] = str(state_error)
-                        response = {"error": "Motion paused; operator recovery required. " +
-                                    self.motion_fault["error"]}
-                        self.channel.send(json.dumps(response, allow_nan=False).encode())
-                        continue
+                        raise InvalidTarget(f"Motion paused; operator recovery required: {exc}") from exc
                 else:
                     raise InvalidTarget("Unknown robot operation")
                 response = {"result": value}
@@ -896,7 +859,7 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
                        rgb_received_ns=obs["rgb_received_ns"], state_received_ns=obs["state_received_ns"])
                 messages = [{"role": "system", "content": system}, {"role": "user", "content": task},
                             *history[-8:], METHODS[algorithm].look(obs)]
-                reply = backend(messages) if backend is not None else mllm(messages, tools)
+                reply = backend(messages)
                 call = reply["tool_calls"][0]
                 fn = call["function"]
                 name = fn["name"]
@@ -945,7 +908,8 @@ def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_dec
             if program is not None:
                 program.close()
 
-    report = {**({"decision_backend": "injected"} if decide is not None else decision_settings()), "task": task,
+    report = {"backend": "configured", "mode": algorithm, "result": reason,
+              **({"decision_backend": "injected"} if decide is not None else decision_settings()), "task": task,
               "stop_reason": reason, "decisions": decisions, "agent_finished": reason == "finish",
               "elapsed_s": round(time.monotonic() - started, 3), "task_success": None}
     try:
@@ -995,12 +959,12 @@ def compile_controller(run_dir, profiles, *, decide=None):
             content.append({"type": "text", "text": f"Turn {obs['turn']}, camera {name}:"})
             content.append({"type": "image_url", "image_url": {
                 "url": "data:image/png;base64," + base64.b64encode(path.read_bytes()).decode()}})
-    tools = [{"type": "function", "function": {"name": "save_controller", "description": "Save Python source.",
-              "parameters": {"type": "object", "properties": {"code": {"type": "string"}},
-                             "required": ["code"], "additionalProperties": False}}}]
+    code_tool = next(t["function"] for t in cap.TOOLS if t["function"]["name"] == "run_code")
+    tools = [{"type": "function", "function": {**code_tool, "name": "save_controller",
+                                               "description": "Save candidate source without executing it."}}]
     messages = [{"role": "system", "content": CONTROLLER_PROMPT}, {"role": "user", "content": content}]
     backend = decide if decide is not None else configured_decider(tools)
-    reply = backend(messages) if backend is not None else mllm(messages, tools)
+    reply = backend(messages)
     call = reply["tool_calls"][0]["function"]
     if call["name"] != "save_controller":
         raise ValueError("Expected save_controller")
@@ -1012,13 +976,7 @@ def compile_controller(run_dir, profiles, *, decide=None):
     args = mains[0].args
     if [a.arg for a in args.posonlyargs + args.args] != ["robot"] or args.kwonlyargs or args.vararg or args.kwarg:
         raise ValueError("Controller must define main(robot)")
-    with tempfile.NamedTemporaryFile(dir=run_dir, mode="w", encoding="utf-8", delete=False) as tmp:
-        try:
-            tmp.write(source.rstrip() + "\n")
-            tmp.flush()
-            os.link(tmp.name, output)
-        finally:
-            Path(tmp.name).unlink()
+    publish_text(output, source.rstrip() + "\n")
     return output
 
 
@@ -1053,10 +1011,15 @@ def main(argv=None):
         return
     if args.arm is not None:
         parser.error("--arm is only used by calibrate-workspace")
+    experiment = args.mode in METHODS
+    if experiment or args.mode == "compile":
+        try:
+            configure_decision(args.backend, args.model, args.reasoning_effort, args.base_url)
+        except ValueError as exc:
+            parser.error(str(exc))
     if args.mode == "compile":
         if not args.run_dir or args.enable_motion:
             parser.error("compile requires --run-dir and runs offline")
-        configure_decision(args.backend, args.model, args.reasoning_effort, args.base_url)
         profiles = json.loads(args.config.read_text())["arms"] if args.config else {}
         artifact = compile_controller(args.run_dir, public_profiles(profiles))
         report_path = args.run_dir / "result.json"
@@ -1073,22 +1036,17 @@ def main(argv=None):
     if args.config is None:
         parser.error("Supply --config with your workstation profile")
     args.out = args.out or args.output_dir / f"{args.mode}__{time.time_ns()}"
-    experiment = args.mode not in ("check", "replay")
-    if experiment and (not (args.task or "").strip() or (args.config and not args.enable_motion)):
+    if experiment and (not (args.task or "").strip() or not args.enable_motion):
         parser.error("Model experiments require --task and live experiments also require --enable-motion")
     if args.mode == "replay" and not args.policy:
         parser.error("replay requires a trusted --policy with main(robot)")
     if args.mode == "check" and args.enable_motion:
         parser.error("check is read-only")
     if experiment:
-        try:
-            configure_decision(args.backend, args.model, args.reasoning_effort, args.base_url)
-        except ValueError as exc:
-            parser.error(str(exc))
         settings = decision_settings()
         if settings["decision_backend"] in ("api", "local") and not settings["model"]:
             parser.error("Set the backend’s default model ID or pass --model")
-        print(json.dumps({"task": args.task, "mode": args.mode, "station": str(args.config or "mock"),
+        print(json.dumps({"task": args.task, "mode": args.mode, "station": str(args.config),
                           "out": str(args.out), **settings}, ensure_ascii=False), flush=True)
     config = json.loads(args.config.read_text())
     needs_policy = args.mode in ("delegate", "monitor")
@@ -1097,8 +1055,10 @@ def main(argv=None):
     bench = workstation(config, args.enable_motion)
     try:
         if experiment:
-            result = run_method(bench, args.task, args.out, algorithm=args.mode, policy=policy, max_decisions=args.max_decisions)
-        elif args.mode == "replay":
+            run_method(bench, args.task, args.out, algorithm=args.mode, policy=policy, max_decisions=args.max_decisions)
+            print((args.out / "result.json").read_text())
+            return
+        if args.mode == "replay":
             result = runpy.run_path(str(args.policy))["main"](bench)
         else:
             obs = bench.observe()
@@ -1107,8 +1067,6 @@ def main(argv=None):
             result = obs
         report = {"backend": "configured", "mode": args.mode,
                   "result": result, "task_success": None}
-        if experiment and (args.out / "result.json").is_file():
-            report.update(json.loads((args.out / "result.json").read_text()))
         output = json.dumps(report, indent=2, allow_nan=False)
         (args.out / "result.json").write_text(output + "\n")
         print(output)
