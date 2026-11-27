@@ -15,6 +15,7 @@ systems such as [Hi Robot](https://arxiv.org/abs/2502.19417).
 | [`delegate.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate.py) | The algorithm alone, without an environment; read this first |
 | [`delegate_robodojo.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_robodojo.py) | RoboDojo, two ARX X5 arms, Pi0.5 through XPolicyLab |
 | [`delegate_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/delegate_dexjoco.py) | DexJoCo, Panda arms with Allegro hands, DexJoCo's multi-task Pi0.5 ([below](#on-dexjoco)) |
+| [`memory.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/memory.py) | Learning across episodes alone, for any paradigm, without an environment |
 | [`delegate_memory_dexjoco.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/experimental/delegate_memory_dexjoco.py) | Experimental: keeps a playbook per task across episodes ([below](#delegate_memory)) |
 
 ## Usage

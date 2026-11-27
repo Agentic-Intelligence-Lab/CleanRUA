@@ -21,7 +21,10 @@ files add the robot conventions, the environment and the bookkeeping of a real r
 
 A variant changes one aspect of a paradigm and adds a word to its file name, so each file still implements one
 algorithm: `cap_delegate` lets CaP programs call the VLA, `cap_jev` and `direct_jev` compact the history with
-Jev, and `delegate_memory` and `cap_explore` learn across episodes.
+Jev, and `delegate_memory` and `cap_explore` learn across episodes. Learning across episodes wraps a paradigm
+rather than replacing it; its prototype is
+[`memory.py`](https://github.com/Agentic-Intelligence-Lab/CleanRUA/blob/main/cleanrua/memory.py), which runs any
+paradigm with a text memory per task and rewrites the memory from each episode's official outcome.
 
 ## What every agent shares
 

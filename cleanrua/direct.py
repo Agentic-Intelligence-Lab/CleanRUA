@@ -10,6 +10,7 @@ This shows the algorithm, not a complete agent. `robot` stands for an environmen
     robot.step(action) -> True once the episode has ended
 See direct_robodojo.py for a complete agent.
 """
+from functools import partial
 import base64
 import io
 import json
@@ -17,6 +18,8 @@ import os
 
 import httpx
 from PIL import Image
+
+from cleanrua_utils.chat_tools import request_tool_call
 
 SYSTEM = ('You control a robot arm. Reply with exactly one tool call each turn. Poses are [x, y, z, roll, pitch, '
           'yaw] of the end effector, in metres and radians. Use the images and state, and check each motion before '
@@ -34,15 +37,15 @@ TOOLS = [
 ]
 
 
-def mllm(messages: list[dict]) -> dict:
-    """The reply of an OpenAI-compatible vision model, keeping its first tool call."""
-    response = httpx.post(os.environ['CLEANRUA_BASE_URL'].rstrip('/') + '/chat/completions', timeout=300.,
-                          headers={'Authorization': f'Bearer {os.environ["CLEANRUA_API_KEY"]}'},
-                          json={'model': os.environ['CLEANRUA_MODEL_NAME'], 'messages': messages, 'tools': TOOLS,
-                                'tool_choice': 'required', 'stream': False})
-    response.raise_for_status()
-    message = response.json()['choices'][0]['message']
-    return {'role': 'assistant', 'content': message.get('content'), 'tool_calls': message['tool_calls'][:1]}
+def mllm(messages: list[dict], *, tools=TOOLS, model=None, reasoning_effort=None, tool_choice='required') -> dict:
+    """Select one tool through an OpenAI-compatible vision endpoint."""
+    post = partial(httpx.post, os.environ['CLEANRUA_BASE_URL'].rstrip('/') + '/chat/completions', timeout=300.,
+                   headers={'Authorization': f'Bearer {os.environ["CLEANRUA_API_KEY"]}'})
+    body = {'model': model or os.environ['CLEANRUA_MODEL_NAME'], 'messages': messages, 'tools': tools,
+            'tool_choice': tool_choice, 'parallel_tool_calls': False, 'stream': False}
+    if reasoning_effort:
+        body['reasoning_effort'] = reasoning_effort
+    return request_tool_call(post, body)
 
 
 def look(observation: dict) -> dict:
@@ -56,17 +59,26 @@ def look(observation: dict) -> dict:
     return {'role': 'user', 'content': content}
 
 
-def direct(robot, instruction: str, max_decisions: int = 50, history_size: int = 4) -> str:
-    """Run one episode and return why it stopped."""
-    history = []  # Past tool calls and their results, as text: only the current observation carries images.
+def move_path(robot, arguments):
+    if 'targets' in arguments:
+        return robot.ik(**arguments)
+    return robot.ik(arguments['pose'], arguments['gripper'])
+
+
+def direct(robot, instruction: str, max_decisions: int = 50, history_size: int = 4,
+           history: list | None = None, *, decide=None) -> str:
+    """Run one episode and return why it stopped; pass `history` to keep its tool calls and results."""
+    # Past tool calls and their results, as text: only the current observation carries images.
+    decide = mllm if decide is None else decide
+    history = [] if history is None else history
     for _ in range(max_decisions):
-        message = mllm([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
+        message = decide([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
                         *history[-2 * history_size:], look(robot.observe())])
         call = message['tool_calls'][0]
         if call['function']['name'] == 'finish':
             return 'finish'
         arguments = json.loads(call['function']['arguments'])
-        path = robot.ik(arguments['pose'], arguments['gripper'])  # The executor is inverse kinematics.
+        path = move_path(robot, arguments)  # The executor is inverse kinematics.
         for action in path:
             if robot.step(action):
                 return 'episode_ended'
