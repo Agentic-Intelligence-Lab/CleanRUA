@@ -1,8 +1,7 @@
-"""One Franka arm, a parallel gripper and named RGB cameras for CleanRUA Direct.
+"""Single-arm Franka environment shared by the real-world method runners.
 
-The Direct protocol calls ik() to prepare a path and step() to execute it. With
-franky's CartesianMotion, the controller performs IK during execution; ik()
-only checks the Cartesian target and never sends a device command.
+The station arm driver reports calibrated TCP feedback and executes blocking pose
+commands. Planning, trajectory validation and hardware transport belong to it.
 """
 from contextlib import ExitStack
 from importlib import import_module
@@ -48,11 +47,15 @@ class FrankaEnv:
     """Base-frame TCP XYZ (m), fixed-axis XYZ RPY (rad), gripper 0 closed to 1 open."""
 
     def __init__(self, config, *, enable_motion=False):
-        from franky import Gripper, RelativeDynamicsFactor, Robot
-
+        arms = config["arms"]
+        if len(arms) != 1:
+            raise ValueError("Configure one Franka arm")
+        profile = next(iter(arms.values()))
+        if profile["end_effector"] != "gripper":
+            raise ValueError("These Franka runners expect a parallel gripper")
         self.motion_enabled = enable_motion
         self.last_gripper_receipt = None
-        self.bounds = config.get("workspace_m")
+        self.bounds = profile.get("workspace_m")
         if self.bounds is not None:
             self.bounds = _array(self.bounds, (2, 3))
             if np.any(self.bounds[0] >= self.bounds[1]):
@@ -60,7 +63,7 @@ class FrankaEnv:
         self.limits = {}
         for key, default in (("max_translation_m", None), ("max_rotation_rad", None),
                              ("arrival_translation_m", .002), ("arrival_rotation_rad", .05)):
-            value = config.get(key, default)
+            value = profile.get(key, default)
             if value is None and not enable_motion:
                 continue
             if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
@@ -70,27 +73,26 @@ class FrankaEnv:
             raise ValueError("Set workspace_m before enabling motion")
         if not config.get("cameras"):
             raise ValueError("Configure at least one named RGB camera")
-        self.flange_T_tcp = config.get("flange_T_tcp")
-        if self.flange_T_tcp is not None:
-            t = self.flange_T_tcp = _array(self.flange_T_tcp, (4, 4))
-            r = t[:3, :3]
-            if (not np.allclose(t[3], [0, 0, 0, 1]) or not np.allclose(r.T @ r, np.eye(3))
-                    or not np.isclose(np.linalg.det(r), 1)):
-                raise ValueError("flange_T_tcp must be a rigid transform in metres")
-
-        self.robot = Robot(config["host"])
-        self.robot.relative_dynamics_factor = RelativeDynamicsFactor(velocity=.02, acceleration=.02, jerk=.01)
-        self.external_gripper = config.get("gripper") is not None
         with ExitStack() as resources:
-            self.gripper = _plugin(config["gripper"]) if self.external_gripper else Gripper(config["host"])
-            if self.external_gripper:
-                if hasattr(self.gripper, "close"):
-                    resources.callback(self.gripper.close)
-                for method in (("state", "set_gripper", "stop") if enable_motion else ("state",)):
-                    if not callable(getattr(self.gripper, method, None)):
-                        raise ValueError(f"External gripper requires {method}()")
-                if enable_motion and hasattr(self.gripper, "check_motion_ready"):
-                    self.gripper.check_motion_ready()
+            def load(spec, methods):
+                device = _plugin(spec)
+                if callable(getattr(device, "close", None)):
+                    resources.callback(device.close)
+                for method in methods:
+                    if not callable(getattr(device, method, None)):
+                        raise ValueError(f"{spec['driver']} requires {method}()")
+                return device
+
+            self.arm = load(profile, ("state", "move_pose", "stop") if enable_motion else ("state",))
+            if "tool" in profile:
+                self.gripper = load(profile["tool"], ("state", "set_gripper", "stop") if enable_motion else ("state",))
+            else:
+                self.gripper = self.arm
+                if enable_motion and not callable(getattr(self.arm, "set_gripper", None)):
+                    raise ValueError("Supply an external tool or implement set_gripper()")
+            for device in self._devices():
+                if enable_motion and callable(getattr(device, "check_motion_ready", None)):
+                    device.check_motion_ready()
             self.cameras = {}
             for name, spec in config["cameras"].items():
                 camera = _plugin(spec) if isinstance(spec, dict) else _USBCamera(spec)
@@ -105,21 +107,17 @@ class FrankaEnv:
         self.motion_enabled = False
         self.resources.close()
 
-    def _ee_T_tcp(self, sample):
-        if self.flange_T_tcp is None:
-            return np.eye(4)  # Use the end-effector frame configured in Desk.
-        return np.linalg.solve(sample.F_T_EE.matrix, self.flange_T_tcp)
+    def _devices(self):
+        return (self.arm,) if self.gripper is self.arm else (self.arm, self.gripper)
 
     def state(self):
-        sample = self.robot.state
-        tcp = sample.O_T_EE.matrix @ self._ee_T_tcp(sample)
-        pose = [*tcp[:3, 3], *Rotation.from_matrix(tcp[:3, :3]).as_euler("xyz")]
-        opening = (self.gripper.state()["gripper"] if self.external_gripper
-                   else self.gripper.width / self.gripper.max_width)
+        raw = self.arm.state()
+        tool_state = raw if self.gripper is self.arm else self.gripper.state()
+        opening = float(_array(tool_state["gripper"], ()))
         if not 0 <= opening <= 1:
             raise ValueError("Invalid measured gripper opening")
-        return {"pose": _array(pose, (6,)).tolist(), "joints": _array(sample.q, (7,)).tolist(),
-                "gripper": float(opening)}
+        return {"pose": _array(raw["pose"], (6,)).tolist(),
+                "joints": _array(raw["joints"], (7,)).tolist(), "gripper": opening}
 
     def observe(self):
         images = {}
@@ -155,8 +153,6 @@ class FrankaEnv:
         return [(goal, opening)]
 
     def step(self, action):
-        from franky import Affine, CartesianMotion
-
         if not self.motion_enabled:
             raise RuntimeError("Motion is disabled")
         goal, opening = action
@@ -168,24 +164,19 @@ class FrankaEnv:
         try:
             if not np.allclose(start, goal, rtol=0, atol=1e-9):
                 rotation = Rotation.from_euler("xyz", goal[3:])
-                tcp = Affine(goal[:3], rotation.as_quat()).matrix
-                ee = tcp @ np.linalg.inv(self._ee_T_tcp(self.robot.state))
-                self.robot.move(CartesianMotion(Affine(ee[:3, 3], Rotation.from_matrix(ee[:3, :3]).as_quat())))
+                self.arm.move_pose(goal.tolist())
                 actual = np.array(self.state()["pose"])
                 if (np.linalg.norm(actual[:3] - goal[:3]) > self.limits["arrival_translation_m"]
                         or (rotation.inv() * Rotation.from_euler("xyz", actual[3:])).magnitude() > self.limits["arrival_rotation_rad"]):
                     raise RuntimeError("TCP outside arrival tolerance")
             if abs(opening - before["gripper"]) > .01:
-                if self.external_gripper:
-                    self.last_gripper_receipt = self.gripper.set_gripper(opening)
-                elif not self.gripper.move(opening * self.gripper.max_width, .02):
-                    raise RuntimeError("Franka Hand did not reach the requested opening")
+                self.last_gripper_receipt = self.gripper.set_gripper(opening)
         except BaseException:
             self.motion_enabled = False
-            for device in (self.robot, self.gripper):
+            for device in self._devices():
                 try:
                     device.stop()
                 except Exception as exc:
-                    warnings.warn(f"Stop failed: {exc}")
+                    warnings.warn(f"Device stop failed: {exc}")
             raise
         return False  # Physical task success is assessed separately from motion completion.
