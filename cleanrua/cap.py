@@ -78,9 +78,10 @@ def look(observation: dict) -> dict:
     return {'role': 'user', 'content': content}
 
 
-def cap(robot, instruction: str, max_decisions: int = 50, history_size: int = 4) -> str:
-    """Run one episode and return why it stopped."""
-    history, api = [], RobotAPI(robot)
+def cap(robot, instruction: str, max_decisions: int = 50, history_size: int = 4,
+        history: list | None = None) -> str:
+    """Run one episode and return why it stopped; pass `history` to keep its tool calls and results."""
+    history, api = [] if history is None else history, RobotAPI(robot)
     namespace = {'np': np, 'robot': api}  # Shared by every program of the episode.
     for _ in range(max_decisions):
         message = mllm([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},

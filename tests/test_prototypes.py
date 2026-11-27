@@ -1,11 +1,13 @@
-"""CPU tests for the four algorithm prototypes, with a scripted MLLM, a fake robot and a fake VLA."""
+"""CPU tests for the four algorithm prototypes and memory, with a scripted MLLM, a fake robot and a fake VLA."""
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
 
-from cleanrua import cap, delegate, direct, monitor
+from cleanrua import cap, delegate, direct, memory, monitor
 
 
 class FakeRobot:
@@ -23,6 +25,9 @@ class FakeRobot:
     def step(self, action):
         self.actions.append(action)
         return len(self.actions) >= self.limit
+
+    def success(self):
+        return False
 
 
 def scripted(*calls):
@@ -76,6 +81,29 @@ class PrototypeTest(unittest.TestCase):
                 expected = 'grasp the bowl' if module is delegate else 'stack the bowls'
                 self.assertEqual(instructions, [(0, expected), (25, expected), (50, expected)])  # 25 actions per chunk.
                 self.assertEqual(len(robot.actions), 63)
+
+    def test_memory_reads_the_lessons_and_rewrites_them_from_the_official_outcome(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path, reflections = Path(folder) / 'stack_blocks.md', []
+            path.write_text('- Check the grasp before lifting (1 success)')
+
+            def chat(messages):
+                reflections.append(messages)
+                return '- New lesson'
+            mllm, sent = scripted(('move', {'pose': [2] + [0] * 5, 'gripper': 0}), ('finish', {}))
+            with mock.patch.object(direct, 'mllm', mllm), mock.patch.object(memory, 'chat', chat):
+                self.assertEqual(memory.memory(direct.direct, FakeRobot(), 'stack the blocks', path), 'finish')
+            self.assertIn('Check the grasp before lifting', sent[0][1]['content'])
+            episode = reflections[0][1]['content']
+            self.assertIn('No inverse-kinematics solution', episode)
+            self.assertIn('"success": false, "stop_reason": "finish", "decisions": 1', episode)
+            self.assertEqual(path.read_text(), '- New lesson')
+
+            mllm, sent = scripted(('finish', {}))  # A frozen memory is read but not rewritten.
+            with mock.patch.object(direct, 'mllm', mllm), mock.patch.object(memory, 'chat', chat):
+                memory.memory(direct.direct, FakeRobot(), 'stack the blocks', path, learn=False)
+            self.assertIn('New lesson', sent[0][1]['content'])
+            self.assertEqual(len(reflections), 1)
 
 
 if __name__ == '__main__':

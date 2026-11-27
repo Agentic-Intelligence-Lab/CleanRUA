@@ -55,6 +55,14 @@
 .rua-tick { fill: var(--rua-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
 .rua-category { fill: var(--rua-ink-2); font-size: 9.5px; }
 .rua-value { fill: var(--rua-ink); font-size: 10px; font-weight: 600; }
+.rua-value-small { font-size: 7.5px; font-variant-numeric: tabular-nums; }
+.rua-stripe { stroke: var(--rua-surface); stroke-width: 1.6; }
+.rua-legend { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.64rem;
+              color: var(--rua-ink-2); }
+.rua-legend span { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rua-legend i { width: 0.6rem; height: 0.6rem; border-radius: 2px; background-color: var(--rua-muted); }
+.rua-legend i.rua-hatched { background-image: repeating-linear-gradient(45deg, transparent 0 2px,
+                            var(--rua-surface) 2px 3.2px); }
 .rua-monitor { fill: var(--rua-monitor); }
 .rua-delegate { fill: var(--rua-delegate); }
 .rua-cap { fill: var(--rua-cap); }

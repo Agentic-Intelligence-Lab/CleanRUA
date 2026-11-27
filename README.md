@@ -40,6 +40,8 @@ python -m cleanrua.direct_robodojo --native-root /path/to/RoboDojo --task stack_
 | Delegate | <img src="docs/paradigms/delegate.svg" width="360" alt="Delegate: the MLLM sends an instruction to a VLA, Pi0.5, which moves the robot." /><br>An MLLM gives sub-task instructions to Pi0.5 and can also move the arms itself. | [`delegate.py`](cleanrua/delegate.py) | [`delegate_robodojo.py`](cleanrua/delegate_robodojo.py)<br>[`delegate_dexjoco.py`](cleanrua/delegate_dexjoco.py) |
 | Monitor | <img src="docs/paradigms/monitor.svg" width="360" alt="Monitor: a VLA works on the task instruction while the MLLM lets it go on or corrects the robot." /><br>Pi0.5 does the task; an MLLM watches it and corrects failures with motion tools. | [`monitor.py`](cleanrua/monitor.py) | [`monitor_robodojo.py`](cleanrua/monitor_robodojo.py)<br>[`monitor_dexjoco.py`](cleanrua/monitor_dexjoco.py) |
 
+Agents that learn across episodes wrap a paradigm: [`memory.py`](cleanrua/memory.py) is the prototype of carrying lessons from one episode of a task into the next.
+
 ### Cite Us
 
 ```bibtex
