@@ -20,6 +20,7 @@ import httpx
 from PIL import Image
 
 from cleanrua_utils.chat_tools import request_tool_call
+from cleanrua_utils.motion import TrajectoryRejected
 
 SYSTEM = ('You control a robot arm. Reply with exactly one tool call each turn. Poses are [x, y, z, roll, pitch, '
           'yaw] of the end effector, in metres and radians. Use the images and state, and check each motion before '
@@ -66,12 +67,12 @@ def move_path(robot, arguments):
 
 
 def direct(robot, instruction: str, max_decisions: int = 50, history_size: int = 4,
-           history: list | None = None, *, decide=None) -> str:
+           history: list | None = None, *, decide=None, on_rejection=None) -> str:
     """Run one episode and return why it stopped; pass `history` to keep its tool calls and results."""
     # Past tool calls and their results, as text: only the current observation carries images.
     decide = mllm if decide is None else decide
     history = [] if history is None else history
-    for _ in range(max_decisions):
+    for decision in range(1, max_decisions + 1):
         message = decide([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
                         *history[-2 * history_size:], look(robot.observe())])
         call = message['tool_calls'][0]
@@ -79,9 +80,20 @@ def direct(robot, instruction: str, max_decisions: int = 50, history_size: int =
             return 'finish'
         arguments = json.loads(call['function']['arguments'])
         path = move_path(robot, arguments)  # The executor is inverse kinematics.
-        for action in path:
-            if robot.step(action):
+        for completed, action in enumerate(path):
+            try:
+                ended = robot.step(action)
+            except TrajectoryRejected as rejection:
+                result = {'status': 'rejected_before_execution', 'step_executed': False,
+                          'steps': completed, 'arm': rejection.arm, 'violation': rejection.violation,
+                          'instruction': 'This rejected step sent no motion or gripper command. '
+                                         'Replan from the fresh observation with a different target or approach.'}
+                if on_rejection is not None:
+                    on_rejection(decision, arguments, result, rejection.trajectory)
+                break
+            if ended:
                 return 'episode_ended'
-        result = {'steps': len(path)} if path else {'error': 'No inverse-kinematics solution'}
+        else:
+            result = {'steps': len(path)} if path else {'error': 'No inverse-kinematics solution'}
         history += [message, {'role': 'tool', 'tool_call_id': call['id'], 'content': json.dumps(result)}]
     return 'max_decisions'

@@ -61,6 +61,14 @@ def model_decider(args, tools):
                    tool_choice=args.tool_choice)
 
 
+def log_rejection(out, decision, arguments, result, trajectory):
+    path = out / f"rejected-trajectory-{decision:03d}.json"
+    with path.open("x") as handle:
+        json.dump({"decision": decision, "request": arguments, "feedback": result, "trajectory": trajectory},
+                  handle, allow_nan=False)
+    print(f"Trajectory rejected: {json.dumps(result)} (saved to {path})", flush=True)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("method", choices=("direct", "cap", "delegate", "monitor"))
@@ -113,8 +121,9 @@ def main(argv=None):
             module = {"direct": direct, "delegate": delegate, "monitor": monitor}[args.method]
             decide = model_decider(args, named_tools(module.TOOLS, robot.capabilities))
             policy = [load_policy(args.policy_config, module.ACTIONS_PER_CHUNK)] if vla else []
+            callbacks = {"on_rejection": partial(log_rejection, out)} if args.method == "direct" else {}
             reason = getattr(module, args.method)(robot, *policy, args.task, max_decisions=args.max_decisions,
-                                                  decide=decide)
+                                                  decide=decide, **callbacks)
             result = {"stop_reason": reason, "task_success": None}
     (out / "result.json").write_text(json.dumps(result, indent=2, allow_nan=False))
     print(out / "result.json")

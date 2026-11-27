@@ -102,6 +102,14 @@ Two targets in one call require a coordinator. Both poses are checked before dis
 arrivals are checked before optional gripper commands are sent individually. A hardware fault
 stops the devices and disables further commands in that session.
 
+With Direct, a single-arm driver that rejects a planned trajectory before sending any hardware
+command can raise `cleanrua_utils.motion.TrajectoryRejected(violation, trajectory=plan)` from
+`move_pose`. Supply a JSON-serializable violation with `joint` (one-based), `metric`, `value`,
+`lower`, `upper` and `unit`. Direct sends this receipt and a fresh observation to the model
+so it can choose a revised target within the remaining decision budget. The run directory records
+the request, feedback and optional plan in `rejected-trajectory-<decision>.json`. Execution faults
+and uncertain dispatch still stop motion.
+
 Delegate and Monitor take a trusted `policy.json` with `driver` and `args`. The driver is callable
 or provides `predict(observation, instruction)`, returning a chunk of actions. Existing single-arm
 policies may still return `(pose, opening)` pairs (station frame). Delegate supplies the phase

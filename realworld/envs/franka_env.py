@@ -7,6 +7,8 @@ import warnings
 import numpy as np
 from scipy.spatial.transform import Rotation
 
+from cleanrua_utils.motion import TrajectoryRejected
+
 
 def _array(value, shape):
     a = np.asarray(value)
@@ -244,24 +246,36 @@ class FrankaEnv:
             raise ValueError("Expected a named targets action")
         commands = self._prepare(action["targets"])
         try:
-            if len(commands) == 2:
-                self.coordinator.move_poses({name: pose.tolist() for name, (pose, _, _) in commands.items()})
-            else:
-                name, (pose, _, before) = next(iter(commands.items()))
-                if not np.allclose(before["pose"], pose, rtol=0, atol=1e-9):
-                    self.arms[name].arm.move_pose(pose.tolist())
-            for name, (pose, _, _) in commands.items():
-                self.arms[name].verify_arrival(pose)
-            for name, (_, opening, before) in commands.items():
-                if opening is not None and abs(opening - before["gripper"]) > .01:
-                    arm = self.arms[name]
-                    arm.last_gripper_receipt = arm.gripper.set_gripper(opening)
-        except BaseException:
+            rejection = self._dispatch(commands)
+        except BaseException as fault:
             self.motion_enabled = False
             for device in self.devices:
                 try:
                     device.stop()
                 except Exception as exc:
                     warnings.warn(f"Device stop failed: {exc}")
+            if isinstance(fault, TrajectoryRejected):
+                raise RuntimeError("Unconfirmed execution state; motion disabled") from fault
             raise
+        if rejection is not None:
+            raise rejection
         return False
+
+    def _dispatch(self, commands):
+        if len(commands) == 2:
+            self.coordinator.move_poses({name: pose.tolist() for name, (pose, _, _) in commands.items()})
+        else:
+            name, (pose, _, before) = next(iter(commands.items()))
+            if not np.allclose(before["pose"], pose, rtol=0, atol=1e-9):
+                try:
+                    self.arms[name].arm.move_pose(pose.tolist())
+                except TrajectoryRejected as exc:
+                    # Only this single-arm driver can attest that no command was dispatched.
+                    exc.arm = name
+                    return exc
+        for name, (pose, _, _) in commands.items():
+            self.arms[name].verify_arrival(pose)
+        for name, (_, opening, before) in commands.items():
+            if opening is not None and abs(opening - before["gripper"]) > .01:
+                arm = self.arms[name]
+                arm.last_gripper_receipt = arm.gripper.set_gripper(opening)

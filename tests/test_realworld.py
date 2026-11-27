@@ -13,6 +13,7 @@ from unittest.mock import patch
 import httpx
 import numpy as np
 
+from cleanrua_utils.motion import TrajectoryRejected
 from realworld.__main__ import main
 from realworld.envs.franka_env import FrankaEnv
 
@@ -139,6 +140,44 @@ class StationTest(unittest.TestCase):
             self.assertTrue(all(arm.arm.stopped for arm in env.arms.values()))
             with self.assertRaisesRegex(RuntimeError, "disabled"):
                 env.step({"targets": targets})
+
+    @patch.dict(os.environ, CLEANRUA_BASE_URL="http://unused", CLEANRUA_MODEL_NAME="test", CLEANRUA_API_KEY="test")
+    def test_rejected_trajectory_reaches_next_decision(self):
+        violation = {"joint": 6, "metric": "position", "value": .5, "lower": .5445, "upper": 4.5169, "unit": "rad"}
+        rejected = {"arm": "left", "pose": [.04, 0, 0, 0, 0, 0], "gripper": .3}
+        revised = {"arm": "left", "pose": [.01, 0, 0, 0, 0, 0]}
+        original = Arm.move_pose
+
+        def guarded_move(arm, pose):
+            if pose == rejected["pose"]:
+                raise TrajectoryRejected(violation, trajectory={"knots": ["test plan"]})
+            return original(arm, pose)
+
+        replies = [reply("move", targets=[rejected]), reply("move", targets=[revised]), reply("finish")]
+        with tempfile.TemporaryDirectory() as temp, patch.object(Arm, "move_pose", guarded_move), \
+                patch.object(Arm, "set_gripper") as grip, patch("httpx.post", side_effect=map(response, replies)) as model:
+            folder = Path(temp)
+            report = self.launch("direct", folder, "--enable-motion", "--task", "move")
+            self.assertEqual(report["stop_reason"], "finish")
+            second, third = [call.kwargs["json"]["messages"] for call in model.call_args_list[1:]]
+            feedback = json.loads(second[-2]["content"])
+            self.assertEqual((feedback["step_executed"], feedback["arm"], feedback["violation"]), (False, "left", violation))
+            for messages, pose in ((second, [0]*6), (third, revised["pose"])):
+                state = json.loads(messages[-1]["content"][0]["text"].removeprefix("State: "))
+                self.assertEqual(state["arms"]["left"]["pose"], pose)
+            grip.assert_not_called()
+            saved = json.loads((folder / "direct/rejected-trajectory-001.json").read_text())
+            self.assertEqual((saved["feedback"], saved["trajectory"]), (feedback, {"knots": ["test plan"]}))
+
+    def test_post_dispatch_errors_are_fatal(self):
+        action = {"targets": [{"arm": "left", "pose": [.02, 0, 0, 0, 0, 0], "gripper": .2}]}
+        with FrankaEnv(station(), enable_motion=True) as env:
+            with patch.object(Arm, "set_gripper", side_effect=TrajectoryRejected({"metric": "unexpected"})):
+                with self.assertRaisesRegex(RuntimeError, "Unconfirmed execution"):
+                    env.step(action)
+            self.assertEqual(env.arms["left"].arm.moves, [action["targets"][0]["pose"]])
+            self.assertFalse(env.motion_enabled)
+            self.assertTrue(env.arms["left"].arm.stopped)
 
     def test_single_arm_and_read_only(self):
         cfg = station()
