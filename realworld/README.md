@@ -196,3 +196,21 @@ CLEANRUA_DECISION_BACKEND=codex python -m realworld.direct \
 | `workstation.py`、`env.py` | 按 JSON 导入现场驱动，提供统一的观测、运动校验、执行与回读。 |
 | `calibration.py` | 遥操时读取所选臂的 TCP，计算并按确认结果保存工作区。 |
 | `__main__.py` | 四种方法的命令行入口、只读检查和受信任策略回放。 |
+
+## 只读获取工作站信息
+
+从展开后的 URDF 提取关节名称、类型、运动链、关节限制、mimic 关系、固定变换和根/末端候选链接：
+
+```bash
+python3 -m realworld.inspect --urdf /path/to/robot.urdf --out robot-inventory.json
+```
+
+在已安装 ROS 2 的工作站上，使用能够导入 rclpy 的 Python。先加载现场 ROS 环境，并采用设备实际使用的 ROS_DOMAIN_ID，再运行：
+
+```bash
+python3 -m realworld.inspect --ros --seconds 5 --out station-inventory.json
+```
+
+工具在指定时间内发现话题，接收 JointState、Image、CameraInfo 和 TF 的元数据，并通过 GetParameters 查询 robot_description，通过 ListControllers 查询控制器名称、状态和接口。robot_description 话题同样可作为模型来源。图像报告保存分辨率、编码、帧名称和时间戳；像素留在传输层。URDF 离线解析只依赖 Python 标准库，ROS 模式依赖现场安装的消息和服务包。
+
+报告保留源文件、ROS 话题/服务名和接收时间。没有收到数据的话题只会出现在 topics，查询失败会出现在 errors。confirmation_required 列出仍需确认的任务运动链、TCP、执行控制器、现场标定、障碍物和工作区。该报告用于填写工作站配置。当前工具提供读取和清点功能，厂家 CAN/SDK 设备需先由相应驱动暴露信息。
