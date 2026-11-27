@@ -6,6 +6,7 @@
     python -m realworld compile --run-dir RUN_DIR --config station.json --backend api
     python -m realworld replay --policy RUN_DIR/controller.py --config station.json --enable-motion
 
+Install numpy, scipy, pillow, gymnasium, httpx and jsonschema.
 Select direct, cap, delegate or monitor. Set CLEANRUA_BASE_URL, CLEANRUA_MODEL_NAME and
 CLEANRUA_API_KEY for an API endpoint with vision and tool calls. Delegate and Monitor
 also require a configured action policy. CaP executes generated code in a Linux
@@ -17,12 +18,12 @@ workspace_m, max_translation_m, max_rotation_rad}. Base-frame absolute XYZ/RPY
 targets use metres and radians. An arm supplies state(), move_pose() and stop();
 a gripper or hand may be integral or supplied by a separate tool. Cameras are named
 drivers returning uint8 RGB arrays through read() and exposing close(). Make local
-driver modules importable on PYTHONPATH. Without --config the CLI uses mock devices.
+driver modules importable on PYTHONPATH. A configured workstation is required for acquisition and execution.
 """
 import argparse
 import ast
+from copy import deepcopy
 import base64
-from functools import partial
 from importlib import import_module
 import inspect
 import io
@@ -34,13 +35,10 @@ import re
 import runpy
 import socket
 import stat
-import string
 import subprocess
 import sys
 import tempfile
 import time
-from typing import Annotated, get_type_hints
-from uuid import uuid4
 import warnings
 
 import gymnasium as gym
@@ -48,7 +46,7 @@ from gymnasium import spaces
 import httpx
 import numpy as np
 from PIL import Image
-from pydantic import ConfigDict, Field, ValidationError, create_model
+from jsonschema import Draft7Validator, ValidationError
 from scipy.spatial.transform import Rotation
 
 from cleanrua import cap, delegate, direct, monitor
@@ -271,74 +269,14 @@ class Bench(gym.Env):
         return obs, 0., False, False, info
 
 
-# Built-in offline devices and workstation configuration
-
-
-class MockArm:
-    def __init__(self):
-        self.pose = [0.4, 0., 0.3, 0., 0., 0.]
-        self.opening = 1.
-
-    def state(self):
-        return {"pose": self.pose.copy(), "joints": [0.] * 7, "gripper": self.opening}
-
-    def move_pose(self, pose):
-        self.pose = list(pose)
-
-    def set_gripper(self, opening):
-        self.opening = opening
-
-    def stop(self):
-        pass
-
-
-class MockCamera:
-    def __init__(self):
-        self.count = 0
-
-    def read(self):
-        self.count += 1
-        return np.full((48, 64, 3), self.count % 256, dtype=np.uint8)
-
-    def close(self):
-        pass
-
-
-class MockHand:
-    def __init__(self, joints):
-        self.positions = [0.] * joints
-
-    def state(self):
-        return {"hand": self.positions.copy()}
-
-    def set_hand(self, positions):
-        self.positions = list(positions)
-
-    def stop(self):
-        pass
-
-
-class PatternCamera:
-    def __init__(self, width, height):
-        self.rgb = np.zeros((height, width, 3), dtype=np.uint8)
-        self.rgb[:, :, 0] = np.linspace(0, 255, width, dtype=np.uint8)
-        self.rgb[:, :, 1] = np.linspace(0, 255, height, dtype=np.uint8)[:, None]
-
-    def read(self):
-        return self.rgb.copy()
-
-    def close(self):
-        pass
+# Workstation configuration
 
 
 def device(spec):
     module, name = spec["driver"].split(":")
-    if module in ("realworld", "realworld.policy", "realworld.real_policy", "cleanrua_utils.real_policy",
-                  "realworld.bench_mock", "cleanrua_utils.bench_mock", "realworld.tests.fixtures.devices",
-                  "examples.plug_and_play.pattern_camera", "realworld.examples.plug_and_play.pattern_camera"):
-        factory = getattr(sys.modules[__name__], name)
-    else:
-        factory = getattr(import_module(module), name)
+    if module in ("realworld.policy", "realworld.real_policy", "cleanrua_utils.real_policy") and name == "HTTPArmPolicy":
+        return HTTPArmPolicy(**spec.get("args", {}))
+    factory = getattr(import_module(module), name)
     return factory(**spec.get("args", {}))
 
 
@@ -369,14 +307,6 @@ class ArmWithTool:
             self.tool.stop()
 
 
-def mock_profile():
-    devices = "realworld"
-    return {"arms": {"left": {"driver": devices + ":MockArm", "end_effector": "gripper",
-                              "workspace_m": [[.2,-.2,.1],[.6,.2,.5]],
-                              "max_translation_m": .031, "max_rotation_rad": .18}},
-            "cameras": {"scene": {"driver": devices + ":MockCamera"}}}
-
-
 def require_methods(driver, methods, label):
     missing = [m for m in methods if not callable(getattr(driver, m, None))]
     if missing:
@@ -385,9 +315,7 @@ def require_methods(driver, methods, label):
 
 def workstation(config, motion_enabled=False):
     arms, cameras = {}, {}
-    if config is None:
-        config = mock_profile()
-    elif "arms" not in config:
+    if not config or "arms" not in config:
         raise ValueError("Workstation JSON requires named arms with explicit driver and args")
     try:
         for side, p in config["arms"].items():
@@ -512,7 +440,7 @@ def calibrate_workspace(path, side=None):
 # Model backends
 
 
-MODEL_KEYS = {"api": "CLEANRUA_MODEL_NAME", "local": "CLEANRUA_LOCAL_MODEL", "codex": "CLEANRUA_CODEX_MODEL"}
+MODEL_KEYS = {"api": "CLEANRUA_MODEL_NAME", "local": "CLEANRUA_LOCAL_MODEL"}
 
 
 # Only use a provider's ambient key for that provider's HTTPS origin.
@@ -551,7 +479,7 @@ def decision_settings():
 def configure_decision(backend, model, reasoning_effort, base_url):
     backend = backend or decision_settings()["decision_backend"]
     if backend not in MODEL_KEYS and ":" not in backend:
-        raise ValueError("Choose api, local, codex or module:factory")
+        raise ValueError("Choose api, local or module:factory")
     if model and backend not in MODEL_KEYS:
         raise ValueError("Configure custom models through their backend factory")
     if base_url and backend not in ("api", "local"):
@@ -630,105 +558,13 @@ def configured_decider(tools):
     name = os.getenv("CLEANRUA_DECISION_BACKEND", "api")
     if name in ("api", "local"):
         return None
-    if name == "codex":
-        return CodexDecision(tools)
     module, sep, factory = name.partition(":")
     if not sep:
-        raise ValueError("Decision backend must be api, local, codex or a trusted module:factory")
+        raise ValueError("Decision backend must be api, local or a trusted module:factory")
     decide = getattr(import_module(module), factory)(tools)
     if not callable(decide):
         raise TypeError("Decision backend factory must return a callable")
     return decide
-
-
-class CodexDecision:
-    def __init__(self, tools):
-        self.tools = tools
-        self.names = [tool["function"]["name"] for tool in tools]
-        self.env = {k: v for k, v in os.environ.items() if k in {
-            "PATH", "HOME", "CODEX_HOME", "USER", "TMPDIR", "LANG", "LC_ALL",
-            "HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY",
-            "https_proxy", "http_proxy", "all_proxy", "no_proxy", "SSL_CERT_FILE"}}
-        status = subprocess.run(["codex", "login", "status"], capture_output=True, text=True,
-                                env=self.env, timeout=15)
-        if status.returncode or "Logged in using ChatGPT" not in (status.stdout + status.stderr).splitlines():
-            raise RuntimeError("Codex backend requires 'codex login' with a ChatGPT account")
-
-    def __call__(self, messages):
-        return self.complete(messages)["choices"][0]["message"]
-
-    def complete(self, messages, timeout=180):
-        schema = {"type": "object", "additionalProperties": False, "required": ["name", "arguments"],
-                  "properties": {"name": {"type": "string", "enum": self.names},
-                                 "arguments": {"type": "string", "description": "Tool arguments as a JSON object string"}}}
-        if not self.tools:
-            schema = {"type": "object", "additionalProperties": False, "required": ["content"],
-                      "properties": {"content": {"type": "string"}}}
-        with tempfile.TemporaryDirectory(prefix="cleanrua-codex-") as tmp:
-            folder = Path(tmp)
-            (folder / "action.schema.json").write_text(json.dumps(schema))
-            args = ["codex", "exec", "--ignore-user-config", "--skip-git-repo-check", "--ephemeral",
-                    "--sandbox", "read-only", "-c", 'forced_login_method="chatgpt"',
-                    "-c", 'model_provider="openai"', "-c", 'web_search="disabled"',
-                    "--disable", "shell_tool", "--disable", "apps", "--disable", "plugins",
-                    "--json", "--output-schema", "action.schema.json", "--output-last-message", "action.json"]
-            model = os.getenv("CLEANRUA_CODEX_MODEL")
-            if model:
-                args.extend(["--model", model])
-            effort = os.getenv("CLEANRUA_REASONING_EFFORT", "default")
-            if effort != "default":
-                args.extend(["-c", "model_reasoning_effort=" + json.dumps(effort)])
-            transcript = []
-            index = 0
-            for msg in messages:
-                if not isinstance(msg.get("content"), list):
-                    transcript.append(msg)
-                    continue
-                parts = []
-                for part in msg["content"]:
-                    if part["type"] == "text":
-                        parts.append(part["text"])
-                    elif part["type"] == "image_url":
-                        url = part["image_url"]["url"]
-                        prefix = "data:image/png;base64,"
-                        if not url.startswith(prefix):
-                            raise ValueError("Expected a PNG data URL from the CleanRUA observation")
-                        index += 1
-                        path = folder / f"view-{index}.png"
-                        path.write_bytes(base64.b64decode(url[len(prefix):], validate=True))
-                        args.extend(["--image", str(path)])
-                        parts.append(f"[attached image {index}]")
-                    else:
-                        raise ValueError(f"Unsupported message part: {part['type']}")
-                transcript.append({**msg, "content": parts})
-            prompt = ("Select exactly one CleanRUA tool using the attached observations and history. "
-                      "Return its name and JSON-encoded arguments. The runner executes the action.\n"
-                      + json.dumps({"tools": self.tools, "messages": transcript}, ensure_ascii=False))
-            if not self.tools:
-                prompt = "Answer the transcript in the content field, preserving the requested formatting.\n" + json.dumps(transcript, ensure_ascii=False)
-            result = subprocess.run([*args, "-"], cwd=folder, env=self.env, input=prompt, text=True,
-                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
-            if result.returncode:
-                # CLI stderr can echo the prompt. Surface the error without logging the full observation.
-                errors = [line for line in result.stderr.splitlines() if line.startswith("ERROR:")]
-                raise RuntimeError(f"Codex exited {result.returncode}. " + " ".join(errors[-1:])[:500])
-            action = json.loads((folder / "action.json").read_text())
-            if self.tools:
-                if action["name"] not in self.names or not isinstance(json.loads(action["arguments"]), dict):
-                    raise ValueError("CLI returned an unknown tool or invalid arguments")
-                message = {"role": "assistant", "content": None, "tool_calls": [
-                    {"id": uuid4().hex, "type": "function", "function": action}]}
-            else:
-                message = {"role": "assistant", "content": action["content"]}
-            usage = {}
-            for line in (result.stdout or "").splitlines():
-                event = json.loads(line)
-                if event.get("type") == "turn.completed" and event.get("usage"):
-                    u = event["usage"]
-                    usage = {"prompt_tokens": u["input_tokens"], "completion_tokens": u["output_tokens"],
-                             "total_tokens": u["input_tokens"] + u["output_tokens"],
-                             "prompt_tokens_details": {"cached_tokens": u.get("cached_input_tokens", 0)}}
-            return {"choices": [{"message": message}], "usage": usage}
 
 
 # Action policy clients for Delegate and Monitor
@@ -757,59 +593,6 @@ class HTTPArmPolicy:
         if result.get("contract") != CONTRACT:
             raise ValueError("Policy response must identify the requested named-arm contract")
         return result["actions"]
-
-
-class DexJoCoOpenPI:
-    """Native DexJoCo Pi0.5 server. Configure matching world/flange frames and Allegro joint order."""
-    def __init__(self, url, camera_mapping, joint_indices):
-        from openpi_client.websocket_client_policy import WebsocketClientPolicy
-        if set(joint_indices) not in ({"right"}, {"right", "left"}):
-            raise ValueError("DexJoCo expects right or right+left")
-        self.indices = {}
-        for side in ("right", "left"):
-            if side in joint_indices:
-                slots = joint_indices[side]
-                if (len(slots) != 16 or any(type(i) != int or not 0 <= i < 16 for i in slots)
-                        or len(set(slots)) != 16):
-                    raise ValueError("Specify 16 driver joint indices in native Allegro order")
-                self.indices[side] = np.asarray(slots)
-        if not camera_mapping or {"prompt", "state"} & camera_mapping.keys():
-            raise ValueError("Provide the checkpoint's mapping from image keys to camera names")
-        self.cameras = camera_mapping
-        self.client = WebsocketClientPolicy(url)
-
-    def predict(self, obs, instruction):
-        arms = obs["arms"]
-        if arms.keys() != self.indices.keys():
-            raise ValueError("Arm names do not match this DexJoCo checkpoint")
-        poses, hands = [], []
-        for side, ix in self.indices.items():
-            arm = arms[side]
-            joints = np.asarray(arm.get("hand"))
-            if joints.shape != (16,):
-                raise ValueError(f"{side} must provide 16 Allegro joint measurements")
-            pose = arm["pose"]
-            quat = Rotation.from_euler("xyz", pose[3:]).as_quat(scalar_first=True)
-            poses.extend([*pose[:3], *quat])
-            hands.extend(joints[ix])
-        images = {key: np.asarray(Image.fromarray(obs["images"][name]).resize((224, 224), Image.Resampling.BILINEAR))
-                  for key, name in self.cameras.items()}
-        native = np.zeros(46)
-        native[:len(poses) + len(hands)] = poses + hands
-        raw = np.asarray(self.client.infer({**images, "state": native, "prompt": instruction})["actions"])
-        # Some single-arm inference servers return a padded second-arm block, as in upstream.
-        if (raw.ndim != 2 or not len(raw) or raw.shape[1] not in {22 * len(self.indices), 44}
-                or raw.dtype.kind not in "fiu" or not np.isfinite(raw).all()):
-            raise ValueError("Invalid native DexJoCo action chunk")
-        actions = [{} for _ in raw]
-        for i, (side, ix) in enumerate(self.indices.items()):
-            block = raw[:, 22*i:22*(i+1)]
-            angles = Rotation.from_rotvec(block[:, 3:6].copy()).as_euler("xyz")
-            for target, row, rpy in zip(actions, block, angles):
-                hand = np.empty(16)
-                hand[ix] = row[6:22]
-                target[side] = {"pose": [*row[:3].tolist(), *rpy.tolist()], "hand": hand.tolist()}
-        return actions
 
 
 class ChunkPolicy:
@@ -1022,114 +805,44 @@ class ProgramSession:
         raise RuntimeError("Program exceeded the per-turn robot-call limit")
 
 
-# Model tools and episode loop
+# The model sees the upstream method's tools, extended for the configured arms.
 
 
-def Tool(method):
-    """Expose a wrapper method to the model: its signature becomes the argument schema, its docstring the description."""
-    hints = get_type_hints(method, include_extras=True)
-    fields = {name: (hints[name], ... if p.default is p.empty else p.default)
-              for name, p in inspect.signature(method).parameters.items() if name != 'self'}
-    method.arguments = create_model(method.__name__, __config__=ConfigDict(extra='forbid', allow_inf_nan=False),
-                                    **fields)
-    return method
+METHODS = {"direct": direct, "cap": cap, "delegate": delegate, "monitor": monitor}
 
 
-class AgentEnv(gym.Wrapper):
-    policy_trace = None
-
-    def __init__(self, env):
-        super().__init__(env)
-        self.tools = {name: method for name, method in inspect.getmembers(type(self), inspect.isfunction)
-                      if hasattr(method, "arguments")}
-        self.grippers = [side for side, profile in env.profiles.items() if profile["end_effector"] == "gripper"]
-        if not self.grippers:
-            self.tools.pop("grip", None)
-        text = gym.spaces.Text(65536, min_length=0, charset=string.printable)
-        self.action_space = gym.spaces.Dict({"name": text, "arguments": text})
-        self.observation_space = gym.spaces.Dict({**env.observation_space.spaces, "feedback": text})
-
-    def schemas(self):
-        tools = []
-        for name, method in self.tools.items():
-            schema = method.arguments.model_json_schema()
-            if name == "move":
-                fields = schema["properties"]
-                profiles = self.env.profiles
-                fields["side"] = {"type": "string", "enum": list(profiles)}
-                if len(profiles) > 1:
-                    schema["required"].append("side")
-                for key in ("gripper", "hand"):
-                    if all(p["end_effector"] != key for p in profiles.values()):
-                        del fields[key]
-            if name == "grip":
-                schema["properties"]["side"] = {"type": "string", "enum": self.grippers}
-                if len(self.grippers) > 1:
-                    schema["required"].append("side")
-            tools.append({"type": "function", "function": {"name": name, "description": inspect.getdoc(method),
-                                                          "parameters": schema}})
-        return tools
-
-    def reset(self, *, seed=None, options=None):
-        observation, info = self.env.reset(seed=seed, options=options)
-        return {**observation, "feedback": ""}, info
-
-    def step(self, action):
-        name = action["name"]
-        obs = None
-        try:
-            method = self.tools.get(name)
-            if method is None:
-                raise InvalidTarget(f"Unknown tool {name}")
-            arguments = method.arguments.model_validate_json(action["arguments"])
-            result = method(self, **arguments.model_dump())
-            if isinstance(result, tuple):  # An action policy already acquired its next observation.
-                result, obs = result
-            finished = name == "finish"
-        except (ValidationError, InvalidTarget) as exc:
-            if not self.env.motion_enabled:
-                raise
-            result, finished = {"error": str(exc)}, False
-        if obs is None:
-            obs = self.env.observe()
-        terminated = finished or result.get("stop_reason") == "terminated"
-        truncated = result.get("stop_reason") == "truncated"
-        return {**obs, "feedback": json.dumps(result)}, 0., terminated, truncated, {"result": result}
-
-    @Tool
-    def finish(self):
-        """End the episode. Task success requires independent evidence."""
-        return {}
-
-
-class MotionEnv(AgentEnv):
-    @Tool
-    def move(self, pose: Annotated[list[float], Field(min_length=6, max_length=6)],
-             side: str = None, gripper: Annotated[float, Field(ge=0, le=1)] = None,
-             hand: list[float] = None):
-        """Move one arm to an absolute end-effector pose. Omitted tool targets hold."""
-        return {"measured": self.env.move(pose, gripper, side=side, hand=hand)}
-
-
-class RUAgent:
-    def __init__(self, task, system, tools, decide=None):
-        self.task, self.system = task, system
-        self.history = []
-        self.decide = decide if decide is not None else configured_decider(tools)
-        if self.decide is None:
-            self.decide = partial(mllm, tools=tools)
-
-    def get_action(self, images, state):
-        observation = look({"images": images, "state": state})
-        messages = [{"role": "system", "content": self.system}, {"role": "user", "content": self.task},
-                    *self.history[-8:], observation]
-        message = self.decide(messages)
-        call = message["tool_calls"][0]
-        self.history.append(message)
-        return call
-
-    def feedback(self, call, result):
-        self.history.append({"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)})
+def tool_schemas(method, profiles):
+    tools = deepcopy(METHODS[method].TOOLS)
+    sides = list(profiles)
+    grippers = [s for s in sides if profiles[s]["end_effector"] == "gripper"]
+    side_schema = {"type": "string", "enum": sides}
+    if method == "direct" and grippers:
+        tools.append({"type": "function", "function": {"name": "grip", "description": "Set only the gripper opening.",
+                      "parameters": {"type": "object", "required": ["opening"],
+                                     "properties": {"opening": {"type": "number", "minimum": 0, "maximum": 1},
+                                                    "side": {"type": "string", "enum": grippers}}}}})
+    for tool in tools:
+        fn = tool["function"]
+        schema = fn["parameters"]
+        schema["additionalProperties"] = False
+        fields = schema["properties"]
+        if fn["name"] == "move":
+            schema["required"] = ["pose"]
+            fields["side"] = side_schema
+            if not grippers:
+                fields.pop("gripper", None)
+            if any(p["end_effector"] == "hand" for p in profiles.values()):
+                fields["hand"] = {"type": "array", "items": {"type": "number"}}
+            if len(sides) > 1:
+                schema["required"].append("side")
+        elif fn["name"] == "grip" and len(grippers) > 1:
+            schema["required"].append("side")
+        elif fn["name"] == "vla":
+            fn["name"] = "actor_act"
+            fields["instruction"]["minLength"] = 1
+            fields["active_groups"] = {"type": "array", "minItems": 1, "uniqueItems": True,
+                                       "items": side_schema}
+    return tools
 
 
 def public_profiles(profiles):
@@ -1137,90 +850,103 @@ def public_profiles(profiles):
             for side, p in profiles.items()}
 
 
-def run_episode(env, system, task, run_dir, decide, max_decisions):
-    if max_decisions < 0:
-        raise ValueError("max_decisions must be nonnegative; 0 means unlimited")
-    public = public_profiles(env.env.profiles)
-    agent = RUAgent(task, system + " Station: " + json.dumps(public), env.schemas(), decide)
+def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_decisions=30, policy=None):
+    if algorithm not in METHODS or max_decisions < 0:
+        raise ValueError("Expected a supported method and nonnegative decision budget")
+    if algorithm in ("delegate", "monitor") and policy is None:
+        raise ValueError("Configure the action policy for this method")
+    profiles = public_profiles(bench.profiles)
+    tools = tool_schemas(algorithm, profiles)
+    schemas = {t["function"]["name"]: Draft7Validator(t["function"]["parameters"]) for t in tools}
+    backend = decide if decide is not None else configured_decider(tools)
+    system = METHODS[algorithm].SYSTEM + (
+        " Use the latest measured base-frame TCP. Respect the configured workspace, total 3D "
+        "translation and relative rotation limits. Use smaller steps near objects. Station: "
+        + json.dumps(profiles))
+    if algorithm == "cap":
+        system += (" Use robot.observe() for named images and arms. Develop reusable functions based on "
+                   "live observations; a separate controller will be compiled from this episode.")
+    grippers = [side for side, p in profiles.items() if p["end_effector"] == "gripper"]
+    history, program = [], None
+    started = time.monotonic()
+    decisions, reason = 0, "max_decisions"
     with (run_dir / "trajectory.jsonl").open("x") as log:
         def record(**event):
-            log.write(json.dumps(event, allow_nan=False, default=lambda array: array.tolist()) + "\n")
+            log.write(json.dumps(event, allow_nan=False, default=lambda value: value.tolist()) + "\n")
             log.flush()
 
-        started = time.monotonic()
-        decisions = 0
         try:
-            obs, _ = env.reset()
-            reason = "max_decisions"
+            obs = bench.observe()
             for turn in (count() if max_decisions == 0 else range(max_decisions)):
                 images = {}
                 for name, rgb in obs["images"].items():
-                    images[name] = f"{name}-{turn:03}.png"
+                    images[name] = f"{name}-{turn:03d}.png"
                     Image.fromarray(rgb).save(run_dir / images[name])
                 record(turn=turn, task=task, images=images, arms=obs["arms"],
                        rgb_received_ns=obs["rgb_received_ns"], state_received_ns=obs["state_received_ns"])
-                call = agent.get_action(obs["images"], obs["arms"])
+                messages = [{"role": "system", "content": system}, {"role": "user", "content": task},
+                            *history[-8:], look({"images": obs["images"], "state": obs["arms"]})]
+                reply = backend(messages) if backend is not None else mllm(messages, tools)
+                call = reply["tool_calls"][0]
+                fn = call["function"]
+                name = fn["name"]
                 decisions += 1
-                record(turn=turn, request=call["function"])
-                env.policy_trace = lambda **event: record(turn=turn, **event)
-                obs, _, done, truncated, info = env.step(call["function"])
-                record(turn=turn, feedback=info["result"])
-                if done or truncated:
-                    reason = info["result"].get("stop_reason", "finish")
+                record(turn=turn, request=fn)
+                obs = None
+                try:
+                    if name not in schemas:
+                        raise InvalidTarget(f"Unknown tool {name}")
+                    args = json.loads(fn["arguments"])
+                    schemas[name].validate(args)
+                    if name == "finish":
+                        reason = "finish"
+                        break
+                    if name == "move":
+                        result = {"measured": bench.move(**args)}
+                    elif name == "grip":
+                        side = args.get("side", grippers[0])
+                        obs, _, _, _, result = bench.step_groups({side: {"gripper": args["opening"]}}, [side])
+                    elif name == "run_code":
+                        if program is None:
+                            program = ProgramSession(bench)
+                        result = program.execute(args["code"])
+                    else:
+                        instruction = args["instruction"] if name == "actor_act" else task
+                        result, obs = policy.run_observed(bench, instruction, args["steps"], args.get("active_groups"),
+                                                         trace=lambda **event: record(turn=turn, **event))
+                except (ValidationError, InvalidTarget, json.JSONDecodeError) as exc:
+                    if not bench.motion_enabled:
+                        raise
+                    result = {"error": str(exc)}
+                record(turn=turn, feedback=result)
+                if result.get("stop_reason") in ("terminated", "truncated"):
+                    reason = result["stop_reason"]
                     break
-                agent.feedback(call, info["result"])
-            record(stop=reason, task_success=None, station=public)
-            report = {**({"decision_backend": "injected"} if decide is not None else decision_settings()), "task": task,
-                      "stop_reason": reason, "decisions": decisions, "agent_finished": reason == "finish",
-                      "elapsed_s": round(time.monotonic() - started, 3), "task_success": None}
-            (run_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-            return report
+                history.extend([reply, {"role": "tool", "tool_call_id": call["id"], "content": json.dumps(result)}])
+                if obs is None:
+                    obs = bench.observe()
+            record(stop=reason, task_success=None, station=profiles)
         except Exception as exc:
             record(fault=str(exc))
             raise
+        finally:
+            if program is not None:
+                program.close()
 
+    report = {**({"decision_backend": "injected"} if decide is not None else decision_settings()), "task": task,
+              "stop_reason": reason, "decisions": decisions, "agent_finished": reason == "finish",
+              "elapsed_s": round(time.monotonic() - started, 3), "task_success": None}
+    try:
+        if algorithm == "cap":
+            report["controller"] = compile_controller(run_dir, profiles, decide=decide).name
+            report["controller_verified"] = False
+    except Exception as exc:
+        report["controller_error"] = str(exc)
+        raise
+    finally:
+        (run_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
+    return reason
 
-# Direct
-
-
-DIRECT_SYSTEM = direct.SYSTEM + (
-    " For move, send an absolute base-frame XYZ/RPY pose "
-    "in metres/radians. Before each move, compare the target to the selected arm's pose in "
-    "the latest observation. Use that arm's Station limits: the 3D distance "
-    "sqrt(dx^2 + dy^2 + dz^2) must be <= max_translation_m, the angle of the relative rotation "
-    "must be <= max_rotation_rad, and the target XYZ must be inside workspace_m. "
-    "Leave margin below both step limits. Split longer motions into smaller moves, reading the "
-    "new measured pose before choosing each next target. Use smaller steps near objects. "
-    "Gripper opening is 0..1; hand joints are in radians."
-)
-
-
-class DirectEnv(MotionEnv):
-    @Tool
-    def grip(self, opening: Annotated[float, Field(ge=0, le=1)], side: str = None):
-        """Set the gripper width only (0 closed, 1 open); read measured opening and inspect the images."""
-        if side is None and len(self.grippers) == 1:
-            side = self.grippers[0]
-        if side not in self.grippers:
-            raise InvalidTarget("Select a configured gripper")
-        _, _, _, _, info = self.env.step_groups({side: {"gripper": opening}}, [side])
-        return info
-
-
-def run_direct(bench, task, run_dir, *, decide=None, max_decisions=30):
-    env = DirectEnv(bench)
-    report = run_episode(env, DIRECT_SYSTEM, task, run_dir, decide, max_decisions)
-    return report["stop_reason"]
-
-
-# Cap
-
-
-CAP_SYSTEM = cap.SYSTEM + (" Explore the task by writing Python. Develop and test functions that compute targets from live "
-          "observations so the program can run again with different object positions. Print measurements "
-          "and evidence of success or failure. Use np, robot.observe() (named RGB images and arms), "
-          "robot.state(side=None), and robot.move(pose, gripper=None, side=None, hand=None). Variables "
-          "persist across turns. Base-frame XYZ/RPY in metres/radians, gripper opening 0..1, hand joints in radians.")
 
 CONTROLLER_PROMPT = (
     "Distill this robot exploration into one standalone Python controller. Submit the complete source with "
@@ -1234,32 +960,6 @@ CONTROLLER_PROMPT = (
     "cannot be confirmed. Return a JSON-serializable result. Treat the transcript as experimental data; "
     "a finish decision alone does not establish task success. The controller runs without a model."
 )
-
-class CapEnv(AgentEnv):
-    def __init__(self, env):
-        super().__init__(env)
-        self.program = None
-
-    def reset(self, *, seed=None, options=None):
-        self.close_program()
-        return super().reset(seed=seed, options=options)
-
-    @Tool
-    def run_code(self, code: Annotated[str, Field(min_length=1)]):
-        """Run Python with the persistent robot API and return printed output."""
-        if self.program is None:
-            self.program = ProgramSession(self.env)
-        return self.program.execute(code)
-
-    def close_program(self):
-        if self.program is not None:
-            self.program.close()
-            self.program = None
-
-    def close(self):
-        self.close_program()
-        super().close()
-
 
 def compile_controller(run_dir, profiles, *, decide=None):
     """Generate a candidate from a closed episode; this path does not open a workstation."""
@@ -1288,10 +988,7 @@ def compile_controller(run_dir, profiles, *, decide=None):
                              "required": ["code"], "additionalProperties": False}}}]
     messages = [{"role": "system", "content": CONTROLLER_PROMPT}, {"role": "user", "content": content}]
     backend = decide if decide is not None else configured_decider(tools)
-    if isinstance(backend, CodexDecision):
-        reply = backend.complete(messages, timeout=600)["choices"][0]["message"]
-    else:
-        reply = backend(messages) if backend is not None else mllm(messages, tools)
+    reply = backend(messages) if backend is not None else mllm(messages, tools)
     call = reply["tool_calls"][0]["function"]
     if call["name"] != "save_controller":
         raise ValueError("Expected save_controller")
@@ -1313,102 +1010,13 @@ def compile_controller(run_dir, profiles, *, decide=None):
     return output
 
 
-def run_cap(bench, task, run_dir, *, decide=None, max_decisions=30):
-    env = CapEnv(bench)
-    try:
-        report = run_episode(env, CAP_SYSTEM, task, run_dir, decide, max_decisions)
-    finally:
-        env.close_program()
-    reason = report["stop_reason"]
-    print(f"Exploration ended ({reason}). Generating {run_dir / 'controller.py'}", flush=True)
-    try:
-        artifact = compile_controller(run_dir, public_profiles(bench.profiles), decide=decide)
-        report.update(controller=artifact.name, controller_verified=False)
-    except Exception as exc:
-        report["controller_error"] = str(exc)
-        raise
-    finally:
-        (run_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n")
-    return reason
-
-
-# Delegate
-
-
-DELEGATE_SYSTEM = delegate.SYSTEM + " Use actor_act to delegate a bounded phase to the configured policy. Gripper opening is 0..1; hand joints are in radians."
-
-
-class DelegateEnv(MotionEnv):
-    def __init__(self, env, policy, task):
-        super().__init__(env)
-        self.policy, self.task = policy, task
-
-    @Tool
-    def actor_act(self, instruction: Annotated[str, Field(min_length=1)],
-                  steps: Annotated[int, Field(ge=1, le=300)], active_groups: list[str] | None = None):
-        """Give the policy a phase instruction for at most steps control commands on the selected arms."""
-        return self.policy.run_observed(self.env, instruction, steps, active_groups, trace=self.policy_trace)
-
-
-def run_delegate(bench, task, run_dir, *, policy, decide=None, max_decisions=30):
-    env = DelegateEnv(bench, policy, task)
-    report = run_episode(env, DELEGATE_SYSTEM, task, run_dir, decide, max_decisions)
-    return report["stop_reason"]
-
-
-# Monitor
-
-
-MONITOR_SYSTEM = monitor.SYSTEM + " Use finish when the task is complete. Gripper opening is 0..1; hand joints are in radians."
-
-
-class MonitorEnv(MotionEnv):
-    def __init__(self, env, policy, task):
-        super().__init__(env)
-        self.policy, self.task = policy, task
-
-    @Tool
-    def run_policy(self, steps: Annotated[int, Field(ge=1, le=300)]):
-        """Continue the original episode task for at most steps control commands."""
-        return self.policy.run_observed(self.env, self.task, steps, trace=self.policy_trace)
-
-
-def run_monitor(bench, task, run_dir, *, policy, decide=None, max_decisions=30):
-    env = MonitorEnv(bench, policy, task)
-    report = run_episode(env, MONITOR_SYSTEM, task, run_dir, decide, max_decisions)
-    return report["stop_reason"]
-
-
 # Command line
-
-
-def resolve_algorithm(name):
-    """Built-in methods follow upstream naming. External methods use trusted module:function."""
-    if ":" in name:
-        module, entry = name.split(":", 1)
-        return getattr(import_module(module), entry)
-    methods = {"direct": run_direct, "cap": run_cap, "delegate": run_delegate, "monitor": run_monitor}
-    if name not in methods:
-        raise ValueError(f"Unknown algorithm: {name}")
-    return methods[name]
-
-
-def run_method(bench, task, run_dir, *, algorithm="direct", decide=None, max_decisions=30, policy=None):
-    method = resolve_algorithm(algorithm)
-    options = {"max_decisions": max_decisions}
-    if decide is not None:
-        options["decide"] = decide
-    if "policy" in inspect.signature(method).parameters:
-        if policy is None:
-            raise ValueError(f"{algorithm} requires an action policy")
-        options["policy"] = policy
-    return method(bench, task, run_dir, **options)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", nargs="?", help="check, calibrate-workspace, compile, replay, an algorithm name, or trusted module:function")
-    parser.add_argument("--config", type=Path, help="Trusted workstation JSON; omit for offline fixtures")
+    parser.add_argument("mode", choices=[*METHODS, "check", "calibrate-workspace", "compile", "replay"])
+    parser.add_argument("--config", type=Path, help="Trusted workstation JSON with arm and camera drivers")
     parser.add_argument("--arm", choices=("left", "right"), help="Arm to sample with calibrate-workspace")
     parser.add_argument("--enable-motion", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--out", type=Path, help="New directory for this run")
@@ -1417,7 +1025,7 @@ def main(argv=None):
     parser.add_argument("--policy-config", type=Path, help="Action policy client configuration")
     parser.add_argument("--policy", type=Path)
     parser.add_argument("--task")
-    parser.add_argument("--backend", help="api, local, codex or a trusted module:factory")
+    parser.add_argument("--backend", help="api, local or a trusted module:factory")
     parser.add_argument("--model", help="Override the configured decision model")
     parser.add_argument("--reasoning-effort", help="Provider-supported effort or default")
     parser.add_argument("--base-url", help="Compatible API or local server URL")
@@ -1450,32 +1058,9 @@ def main(argv=None):
         return
     if args.run_dir is not None:
         parser.error("--run-dir is used with compile")
-    if args.mode is None:
-        try:
-            args.mode = input("Method (direct / cap / delegate / monitor) [direct]: ").strip() or "direct"
-            if args.mode not in ("direct", "cap", "delegate", "monitor"):
-                parser.error("Choose direct, cap, delegate or monitor")
-            if not args.config:
-                station = input("Workstation JSON [mock]: ").strip()
-                args.config = Path(station) if station else None
-            args.task = args.task or input("Task: ").strip()
-            backend = decision_settings()["decision_backend"]
-            args.backend = args.backend or input(f"Decision backend (api / local / codex) [{backend}]: ").strip() or backend
-            if args.backend in MODEL_KEYS:
-                model = os.getenv(MODEL_KEYS[args.backend]) or ("CLI default" if args.backend == "codex" else "served model ID required")
-                args.model = args.model or input(f"Model [{model}]: ").strip() or None
-                effort = os.getenv("CLEANRUA_REASONING_EFFORT", "default")
-                args.reasoning_effort = args.reasoning_effort or input(f"Reasoning effort [{effort}]: ").strip() or None
-            if args.mode in ("delegate", "monitor") and not args.policy_config:
-                policy_path = input("Action policy JSON [workstation policy]: ").strip()
-                args.policy_config = Path(policy_path) if policy_path else None
-            if args.config and not args.enable_motion:
-                args.enable_motion = input(f"Enable motion for {args.config} and task {args.task!r}? [y/N]: ").strip().lower() == "y"
-        except EOFError:
-            parser.error("Supply a method and --task for non-interactive runs")
-    if args.out is None:
-        name = args.mode.replace(":", "_")
-        args.out = args.output_dir / f"{name}__{time.time_ns()}"
+    if args.config is None:
+        parser.error("Supply --config with your workstation profile")
+    args.out = args.out or args.output_dir / f"{args.mode}__{time.time_ns()}"
     experiment = args.mode not in ("check", "replay")
     if experiment and (not (args.task or "").strip() or (args.config and not args.enable_motion)):
         parser.error("Model experiments require --task and live experiments also require --enable-motion")
@@ -1489,15 +1074,15 @@ def main(argv=None):
         except ValueError as exc:
             parser.error(str(exc))
         settings = decision_settings()
-        if args.mode in ("direct", "cap", "delegate", "monitor") and settings["decision_backend"] in ("api", "local") and not settings["model"]:
+        if settings["decision_backend"] in ("api", "local") and not settings["model"]:
             parser.error("Set the backend’s default model ID or pass --model")
         print(json.dumps({"task": args.task, "mode": args.mode, "station": str(args.config or "mock"),
                           "out": str(args.out), **settings}, ensure_ascii=False), flush=True)
-    config = json.loads(args.config.read_text()) if args.config else None
-    needs_policy = experiment and "policy" in inspect.signature(resolve_algorithm(args.mode)).parameters
+    config = json.loads(args.config.read_text())
+    needs_policy = args.mode in ("delegate", "monitor")
     policy = load_policy(config, args.policy_config) if needs_policy else None
     args.out.mkdir(parents=True, exist_ok=False)
-    bench = workstation(config, args.mode != "check" and (not args.config or args.enable_motion))
+    bench = workstation(config, args.enable_motion)
     try:
         if experiment:
             result = run_method(bench, args.task, args.out, algorithm=args.mode, policy=policy, max_decisions=args.max_decisions)
@@ -1508,7 +1093,7 @@ def main(argv=None):
             for name, image in obs.pop("images").items():
                 Image.fromarray(image).save(args.out / f"{name}.png")
             result = obs
-        report = {"backend": "configured" if args.config else "mock", "mode": args.mode,
+        report = {"backend": "configured", "mode": args.mode,
                   "result": result, "task_success": None}
         if experiment and (args.out / "result.json").is_file():
             report.update(json.loads((args.out / "result.json").read_text()))
