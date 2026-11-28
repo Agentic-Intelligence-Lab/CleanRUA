@@ -21,8 +21,6 @@ import os
 import httpx
 from PIL import Image
 
-from cleanrua.direct import move_path
-
 ACTIONS_PER_CHUNK = 25  # Actions run from each predicted chunk before the VLA sees a fresh observation.
 SYSTEM = ('You control a robot arm through a vision-language-action model (VLA). Reply with exactly one tool call each '
           'turn. Give the VLA one short instruction per phase, such as grasping or placing an object, and check the '
@@ -68,12 +66,11 @@ def look(observation: dict) -> dict:
 
 
 def delegate(robot, policy, instruction: str, max_decisions: int = 50, history_size: int = 4,
-             history: list | None = None, *, decide=None) -> str:
+             history: list | None = None) -> str:
     """Run one episode and return why it stopped; pass `history` to keep its tool calls and results."""
-    decide = mllm if decide is None else decide
     history = [] if history is None else history
     for _ in range(max_decisions):
-        message = decide([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
+        message = mllm([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
                         *history[-2 * history_size:], look(robot.observe())])
         call = message['tool_calls'][0]
         name, arguments = call['function']['name'], json.loads(call['function']['arguments'])
@@ -88,7 +85,7 @@ def delegate(robot, policy, instruction: str, max_decisions: int = 50, history_s
                     return 'episode_ended'
             result = {'steps': arguments['steps']}
         else:  # move: inverse kinematics, as in Direct.
-            path = move_path(robot, arguments)
+            path = robot.ik(arguments['pose'], arguments['gripper'])
             for action in path:
                 if robot.step(action):
                     return 'episode_ended'

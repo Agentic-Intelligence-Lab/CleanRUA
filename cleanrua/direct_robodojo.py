@@ -23,7 +23,6 @@ from pydantic import BaseModel, ConfigDict, Field, create_model
 from scipy.spatial.transform import Rotation, Slerp
 from tensorboardX import SummaryWriter
 
-from cleanrua_utils.chat_tools import request_tool_call
 from cleanrua_utils.robodojo_env import RoboDojoEnv
 
 
@@ -328,20 +327,29 @@ class RUAgent:
         if self.args.reasoning_effort:
             body['reasoning_effort'] = self.args.reasoning_effort
         self.last_usage = Counter()  # Of this decision, over every request it took.
-        def record_reply(reply, elapsed):
+        for _ in range(3):  # With tool_choice 'auto' the model may answer in text alone: ask again.
+            start = time.time()
+            response = self.client.post('chat/completions', json=body)  # A failed request ends the episode.
+            response.raise_for_status()
+            reply = response.json()
             usage = reply['usage']
             self.last_usage.update({
                 'total_tokens': usage.get('total_tokens') or 0, 'prompt_tokens': usage.get('prompt_tokens') or 0,
                 'completion_tokens': usage.get('completion_tokens') or 0,
                 'cached_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0,
                 'reasoning_tokens': (usage.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0})
-            self.usage.update(requests=1, model_s=elapsed)
+            self.usage.update(requests=1, model_s=time.time() - start)
             self.message = reply['choices'][0]['message']
-
-        self.pending = request_tool_call(partial(self.client.post, 'chat/completions'), body, on_reply=record_reply)
+            if self.message.get('tool_calls'):
+                break
+            body['messages'] = [*body['messages'], {'role': 'assistant', 'content': self.message.get('content') or ''},
+                                {'role': 'user', 'content': 'Reply with exactly one tool call.'}]
+        else:
+            raise RuntimeError(f'The model replied without a tool call: {self.message.get("content")!r}')
         self.last_usage = dict(self.last_usage)
         self.usage.update(images=len(observation['cameras']), **self.last_usage)
-        call = self.pending['tool_calls'][0]
+        call = self.message['tool_calls'][0]  # Only the first call is executed and kept in history.
+        self.pending = {'role': 'assistant', 'content': self.message.get('content'), 'tool_calls': [call]}
         return {'name': call['function']['name'], 'arguments': call['function']['arguments']}
 
     def close(self) -> None:

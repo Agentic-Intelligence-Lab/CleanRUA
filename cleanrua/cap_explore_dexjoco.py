@@ -5,7 +5,6 @@
 # succeeds in consecutive rehearsals is verified; testing runs only the frozen program, without the LLM.
 # Following RAX (2026); unlike Delegate, no action model: programs command the arm poses and all 16 finger joints.
 # Setup and usage: examples/installation_dexjoco.md
-import ast
 import base64
 import inspect
 import re
@@ -23,17 +22,18 @@ from collections import Counter, deque
 from dataclasses import asdict, dataclass
 from functools import partial
 from pathlib import Path
-from urllib.parse import quote
 from typing import Annotated, Literal, get_type_hints
 
 import gymnasium as gym
 import httpx
 import numpy as np
+import tyro
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, create_model, validate_call
 from scipy.spatial.transform import Rotation, Slerp
+from tensorboardX import SummaryWriter
 
-from cleanrua_utils.chat_tools import NoToolCall, request_tool_call
+from cleanrua_utils.dexjoco_env import DexJoCoEnv
 
 
 @dataclass
@@ -406,19 +406,19 @@ the official success check after each tool call, its final images, goal images o
 Reply with exactly two fenced blocks. First ```markdown with the updated notes, at most {limit} characters: what \
 worked, what failed and why, useful parameters such as approach offsets and finger postures (not object \
 coordinates), and how the scene looks when the task is really done; mark how much evidence each point has. Then \
-```python with the complete program: a function `main(robot)` using the robot API of the episode ({api}). It must find objects itself from the available observations, check what it observes after each stage, retry or correct a stage that failed, and print a short trace. \
+```python with the complete program: a function `main(robot)` using the robot API of the episode (`robot.state`, \
+`robot.move`, `robot.hold`, `robot.camera`, `robot.point`, `np`). It must find objects itself from images and \
+depth, check what it observes after each stage, retry or correct a stage that failed, and print a short trace. \
 Keep the current program if the episode gives no reason to change it."""
 
 
 class RUAgent:
     """Policy: chooses the next tool call from the current observation with a vision LLM."""
 
-    def __init__(self, args: Args, tools: list[dict], *, model=None, client=None, system_prompt=SYSTEM_PROMPT,
-                 program_api="robot.state, robot.move, robot.hold, robot.camera, robot.point, np"):
+    def __init__(self, args: Args, tools: list[dict]):
         self.args, self.tools = args, tools
-        self.system_prompt, self.program_api = system_prompt, program_api
-        self.model = model or os.environ[args.model_env]
-        self.client = client or httpx.Client(base_url=os.environ[args.base_url_env].rstrip('/') + '/', timeout=args.request_timeout,
+        self.model = os.environ[args.model_env]
+        self.client = httpx.Client(base_url=os.environ[args.base_url_env].rstrip('/') + '/', timeout=args.request_timeout,
                                    headers={'Authorization': f'Bearer {os.environ[args.api_key_env]}'},
                                    transport=httpx.HTTPTransport(retries=2))  # Retries only failed connection setup.
         self.history: deque[tuple[dict, dict]] = deque(maxlen=args.history_size)
@@ -439,7 +439,7 @@ class RUAgent:
         cameras = {name: {key: value for key, value in camera.items() if key != 'rgb'}
                    for name, camera in observation['cameras'].items()}
         text = json.dumps({'arms': observation['arms'], 'cameras': cameras,
-                           'steps_remaining': None if self.step_limit is None else self.step_limit - observation['native_steps']},
+                           'steps_remaining': self.step_limit - observation['native_steps']},
                           default=lambda x: np.round(x, 4).tolist())
         content = [{'type': 'text', 'text': 'Current observation: ' + text}]
         for name, camera in observation['cameras'].items():
@@ -447,7 +447,7 @@ class RUAgent:
             Image.fromarray(camera['rgb']).save(png, format='PNG')
             content += [{'type': 'text', 'text': f'Camera {name}:'}, {'type': 'image_url', 'image_url': {
                 'url': 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()}}]
-        messages = [{'role': 'system', 'content': self.system_prompt}, {'role': 'user', 'content': self.task},
+        messages = [{'role': 'system', 'content': SYSTEM_PROMPT}, {'role': 'user', 'content': self.task},
                     *(message for pair in self.history for message in pair), {'role': 'user', 'content': content}]
         body = {'model': self.model, 'messages': messages, 'tools': self.tools, 'tool_choice': self.args.tool_choice,
                 'parallel_tool_calls': False, 'max_tokens': self.args.max_output_tokens, 'stream': False}
@@ -456,20 +456,29 @@ class RUAgent:
         if self.args.reasoning_effort:
             body['reasoning_effort'] = self.args.reasoning_effort
         self.last_usage = Counter()  # Of this decision, over every request it took.
-        def record_reply(reply, elapsed):
+        for _ in range(3):  # With tool_choice 'auto' the model may answer in text alone: ask again.
+            start = time.time()
+            response = self.client.post('chat/completions', json=body)  # A failed request ends the episode.
+            response.raise_for_status()
+            reply = response.json()
             usage = reply['usage']
             self.last_usage.update({
                 'total_tokens': usage.get('total_tokens') or 0, 'prompt_tokens': usage.get('prompt_tokens') or 0,
                 'completion_tokens': usage.get('completion_tokens') or 0,
                 'cached_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0,
                 'reasoning_tokens': (usage.get('completion_tokens_details') or {}).get('reasoning_tokens') or 0})
-            self.usage.update(requests=1, model_s=elapsed)
+            self.usage.update(requests=1, model_s=time.time() - start)
             self.message = reply['choices'][0]['message']
-
-        self.pending = request_tool_call(partial(self.client.post, 'chat/completions'), body, on_reply=record_reply)
+            if self.message.get('tool_calls'):
+                break
+            body['messages'] = [*body['messages'], {'role': 'assistant', 'content': self.message.get('content') or ''},
+                                {'role': 'user', 'content': 'Reply with exactly one tool call.'}]
+        else:
+            raise RuntimeError(f'The model replied without a tool call: {self.message.get("content")!r}')
         self.last_usage = dict(self.last_usage)
         self.usage.update(images=len(observation['cameras']), **self.last_usage)
-        call = self.pending['tool_calls'][0]
+        call = self.message['tool_calls'][0]  # Only the first call is executed and kept in history.
+        self.pending = {'role': 'assistant', 'content': self.message.get('content'), 'tool_calls': [call]}
         return {'name': call['function']['name'], 'arguments': call['function']['arguments']}
 
     def compile(self, sections: list[str], observation: dict, goals: list[dict] = ()) -> tuple[str, str]:
@@ -482,7 +491,7 @@ class RUAgent:
                 'url': 'data:image/png;base64,' + base64.b64encode(png.getvalue()).decode()}}]
         content += list(goals)
         body = {'model': self.model, 'max_tokens': self.args.compile_max_tokens, 'stream': False, 'messages': [
-            {'role': 'system', 'content': COMPILE_PROMPT.format(limit=self.args.notes_chars, api=self.program_api)},
+            {'role': 'system', 'content': COMPILE_PROMPT.format(limit=self.args.notes_chars)},
             {'role': 'user', 'content': content}]}
         if self.args.provider == 'aliyun':
             body['enable_thinking'] = False
@@ -499,36 +508,35 @@ class RUAgent:
                           cached_tokens=(usage.get('prompt_tokens_details') or {}).get('cached_tokens') or 0)
         text = reply['choices'][0]['message'].get('content') or ''
         blocks = dict(re.findall(r'```(markdown|python)\n(.*?)```', text, re.DOTALL))
-        if 'python' not in blocks:
+        if 'python' not in blocks or 'def main(robot)' not in blocks['python']:
             raise ValueError('The reply has no ```python block defining main(robot)')
-        tree = ast.parse(blocks['python'], 'controller.py')
-        mains = [node.args for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'main']
-        if len(mains) != 1:
-            raise ValueError('Expected one top-level main(robot)')
-        params = mains[0]
-        if [a.arg for a in params.posonlyargs + params.args] != ['robot'] or params.kwonlyargs or params.vararg or params.kwarg:
-            raise ValueError('Expected main(robot)')
-        compile(tree, 'controller.py', 'exec')
+        compile(blocks['python'], 'controller.py', 'exec')  # A SyntaxError keeps the previous program.
         return blocks.get('markdown', '').strip()[:self.args.notes_chars], blocks['python']
 
     def close(self) -> None:
         self.client.close()
 
 
-def replay_controller(env, program):
-    """Execute one frozen main(robot) through the environment's run_code tool."""
-    return env.step({'name': 'run_code', 'arguments': json.dumps({'code': program + '\n\nmain(robot)\n'})})
+if __name__ == '__main__':
+    args = tyro.cli(Args)
+    run_name = f'{args.task}__{args.exp_name}__{args.seed}__{int(time.time())}'
+    run_dir = args.output_dir / run_name
+    (run_dir / 'images').mkdir(parents=True)
+    writer = SummaryWriter(str(run_dir))
+    writer.add_text('hyperparameters', '|param|value|\n|-|-|\n' + '\n'.join(f'|{k}|{v}|' for k, v in vars(args).items()))
+    trajectory = (run_dir / 'trajectory.jsonl').open('w')
 
-
-def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_input=False):
-    """Shared CaP Explore episode. The caller owns the environment, model client and metrics writer."""
-    (run_dir / 'images').mkdir(parents=True, exist_ok=True)
-    metric = writer.add_scalar if writer is not None else lambda *args: None
     def log(event: str, **data) -> None:  # NumPy values become lists, paths become strings.
         record = {'event': event, 'time': time.time(), **data}
         trajectory.write(json.dumps(record, default=lambda x: x.tolist() if hasattr(x, 'tolist') else str(x)) + '\n')
         trajectory.flush()
 
+    env = DexJoCoEnv(args.native_root, args.task, args.seed, render_mode='rgb_array' if args.capture_video else None)
+    if args.capture_video:
+        env = gym.wrappers.RecordVideo(env, str(run_dir / 'videos'), episode_trigger=lambda _: True, disable_logger=True)
+    env = DexJoCoWrapper(env, args.attempts if args.learn else 0)
+    agent = RUAgent(args, env.schemas())
+    memory = args.memory_dir / args.task
     memory.mkdir(parents=True, exist_ok=True)
     goals = [part for path in sorted((memory / 'goal').glob('*.png')) for part in (  # The finished task elsewhere.
         {'type': 'text', 'text': f'Goal image {path.stem}:'}, {'type': 'image_url', 'image_url': {
@@ -540,7 +548,6 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
     # Testing runs the verified program if there is one; learning always rehearses the latest.
     program_path = memory / ('verified.py' if not args.learn and (memory / 'verified.py').exists() else 'controller.py')
     program = program_path.read_text() if program_path.exists() else None
-    trajectory = (run_dir / 'trajectory.jsonl').open('w')
     try:
         observation, info = env.reset(seed=args.seed)
         instruction, step_limit = info['instruction'], info['step_limit']  # `info` is replaced by every step's.
@@ -552,7 +559,8 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
         stop_reason = 'no_program'
         if program is not None:  # Rehearse the program alone, as testing will.
             (run_dir / 'program.py').write_text(program)
-            observation, total_reward, terminated, truncated, info = replay_controller(env, program)
+            observation, total_reward, terminated, truncated, info = env.step(
+                {'name': 'run_code', 'arguments': json.dumps({'code': program + '\n\nmain(robot)\n'})})
             rehearsal = {**json.loads(observation['feedback']), 'success': env.unwrapped.success}
             log('rehearsal', program=program_path.name, version=status['version'], **rehearsal)
             print(f'rehearsal of {program_path.name}: {rehearsal}', flush=True)
@@ -566,7 +574,7 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
                 observation = {**env.restart(), 'feedback': ''}
 
         home = {name: np.round(arm['pose'], 4).tolist() for name, arm in observation['arms'].items()}
-        task = (f'Task: {instruction}\nCurrent arm poses: {json.dumps(home)}'
+        task = (f'Task: {instruction}\nCurrent flange poses: {json.dumps(home)}'
                 + (f'\nYour notes from earlier episodes:\n{notes}' if notes else '')
                 + (f'\nYour current program, version {status["version"]}:\n```python\n{program}```\n'
                    f'Its rehearsal at the start of this episode: {json.dumps(rehearsal)}' if program else ''))
@@ -575,11 +583,11 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
         try:
             for decision in range(1, args.max_decisions + 1 if explore else 1):
                 for name, camera in observation['cameras'].items():
-                    Image.fromarray(camera['rgb']).save(run_dir / 'images' / f'{decision:03d}_{quote(name, safe="")}.png')
+                    Image.fromarray(camera['rgb']).save(run_dir / 'images' / f'{decision:03d}_{name}.png')
                 action = agent.get_action(observation)
                 log('action', decision=decision, message=agent.message, total_tokens=agent.total_tokens,
                     usage=agent.last_usage)
-                metric('charts/total_tokens', agent.total_tokens, decision)
+                writer.add_scalar('charts/total_tokens', agent.total_tokens, decision)
                 if agent.total_tokens >= args.max_total_tokens:
                     stop_reason = 'token_budget'
                     break
@@ -599,9 +607,9 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
                     stops[f'{action["name"]}:{feedback["stop_reason"]}'] += 1
                 log('step', decision=decision, action=action, feedback=feedback, reward=reward, terminated=terminated,
                     truncated=truncated, info=info, arms=observation['arms'], native_steps=observation['native_steps'])
-                metric('charts/reward', reward, decision)
-                metric('charts/native_steps', observation['native_steps'], decision)
-                metric('charts/tool_ok', feedback['ok'], decision)
+                writer.add_scalar('charts/reward', reward, decision)
+                writer.add_scalar('charts/native_steps', observation['native_steps'], decision)
+                writer.add_scalar('charts/tool_ok', feedback['ok'], decision)
                 print(f'decision={decision} {action["name"]} {feedback}', flush=True)
                 transcript.append(f'### Decision {decision}: {action["name"]}\n'
                                   + (json.loads(action['arguments'] or '{}').get('code') or action['arguments'])
@@ -619,16 +627,14 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
             else:
                 stop_reason = f'model_error: {type(exc).__name__}'
                 model_error_detail = str(exc)[:300]
-        except NoToolCall as exc:  # The model kept answering without a tool call: the episode ends, recorded.
+        except RuntimeError as exc:  # The model kept answering without a tool call: the episode ends, recorded.
             stop_reason, model_error_detail = 'model_error: no tool call', str(exc)[:300]
 
         if explore and not env.attempt_over:  # The attempt still running when exploration stopped.
             env.outcomes.append(env.unwrapped.success)
         # A test episode succeeds if the program does; a learning episode if the rehearsal or any attempt does.
         succeeded = rehearsed or any(env.outcomes)
-        if not succeeded and (None in env.outcomes or (rehearsal and rehearsal['success'] is None)):
-            succeeded = None
-        verdict = {'success': succeeded, 'score': None if succeeded is None else (100. if succeeded else 0.)}
+        verdict = {'success': succeeded, 'score': 100. if succeeded else 0.}
         compile_error = None
         if args.learn and not stop_reason.startswith('model_error'):
             if rehearsed:  # Unchanged program, one more success towards verification.
@@ -639,21 +645,14 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
             else:
                 status['consecutive_successes'] = 0
                 outcome = (f'Official outcome of each attempt: '
-                           f'{["unknown" if o is None else ("success" if o else "failure") for o in env.outcomes]}. Stop reason: {stop_reason}.')
+                           f'{["success" if o else "failure" for o in env.outcomes]}. Stop reason: {stop_reason}.')
                 episode = '\n\n'.join(transcript)[-30000:]  # The end of the episode, if it is long.
                 try:
-                    sections = [f'Task: {instruction}', f'Your notes:\n{notes or "(none)"}',
+                    notes, program = agent.compile(
+                        [f'Task: {instruction}', f'Your notes:\n{notes or "(none)"}',
                          f'Current program:\n```python\n{program}```\nIts rehearsal: {json.dumps(rehearsal)}'
                          if program else 'There is no program yet.', f'This episode:\n{episode or "(no decisions)"}',
-                         outcome]
-                    if save_compile_input:
-                        images = {}
-                        for i, (name, cam) in enumerate(observation['cameras'].items()):
-                            images[name] = f'final_{i}.png'
-                            Image.fromarray(cam['rgb']).save(run_dir / images[name])
-                        (run_dir / 'compile_input.json').write_text(json.dumps({
-                            'sections': sections, 'images': images, 'goals': goals}))
-                    notes, program = agent.compile(sections, observation, goals)
+                         outcome], observation, goals)
                     notes_path.write_text(notes)
                     (memory / 'controller.py').write_text(program)
                     status['version'] += 1
@@ -675,36 +674,11 @@ def run_episode(args, env, agent, run_dir, memory, *, writer=None, save_compile_
                   'status': status, 'total_reward': total_reward}
         log('result', **result)
         (run_dir / 'result.json').write_text(json.dumps(result, indent=2))
-        metric('charts/success', verdict['success'], decision)
-        metric('charts/score', verdict['score'], decision)
+        writer.add_scalar('charts/success', verdict['success'], decision)
+        writer.add_scalar('charts/score', verdict['score'], decision)
         print(json.dumps(result, indent=2), flush=True)
-        return result
-    except Exception as exc:
-        log('fault', error=f'{type(exc).__name__}: {exc}')
-        raise
-    finally:
-        trajectory.close()
-
-
-if __name__ == '__main__':
-    import tyro
-    from tensorboardX import SummaryWriter
-    from cleanrua_utils.dexjoco_env import DexJoCoEnv
-
-    args = tyro.cli(Args)
-    run_name = f'{args.task}__{args.exp_name}__{args.seed}__{int(time.time())}'
-    run_dir = args.output_dir / run_name
-    writer = SummaryWriter(str(run_dir))
-    writer.add_text('hyperparameters', '|param|value|\n|-|-|\n' + '\n'.join(f'|{k}|{v}|' for k, v in vars(args).items()))
-    env = DexJoCoEnv(args.native_root, args.task, args.seed, render_mode='rgb_array' if args.capture_video else None)
-    if args.capture_video:
-        env = gym.wrappers.RecordVideo(env, str(run_dir / 'videos'), episode_trigger=lambda _: True, disable_logger=True)
-    env = DexJoCoWrapper(env, args.attempts if args.learn else 0)
-    agent = RUAgent(args, env.schemas())
-    memory = args.memory_dir / args.task
-    try:
-        run_episode(args, env, agent, run_dir, memory, writer=writer)
     finally:
         agent.close()
         env.close()
         writer.close()
+        trajectory.close()

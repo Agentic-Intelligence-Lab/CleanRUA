@@ -20,8 +20,6 @@ import os
 import httpx
 from PIL import Image
 
-from cleanrua.direct import move_path
-
 ACTIONS_PER_CHUNK = 25  # Actions run from each predicted chunk before the VLA sees a fresh observation.
 SYSTEM = ('A vision-language-action model (VLA) does the task on a robot arm; you supervise it. Reply with exactly one '
           'tool call each turn. Let it continue with `run_policy` and check its progress in the images. A slow or '
@@ -68,12 +66,11 @@ def look(observation: dict) -> dict:
 
 
 def monitor(robot, policy, instruction: str, max_decisions: int = 50, history_size: int = 4,
-            history: list | None = None, *, decide=None) -> str:
+            history: list | None = None) -> str:
     """Run one episode and return why it stopped; pass `history` to keep its tool calls and results."""
-    decide = mllm if decide is None else decide
     history = [] if history is None else history
     for _ in range(max_decisions):
-        message = decide([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
+        message = mllm([{'role': 'system', 'content': SYSTEM}, {'role': 'user', 'content': f'Task: {instruction}'},
                         *history[-2 * history_size:], look(robot.observe())])
         call = message['tool_calls'][0]
         name, arguments = call['function']['name'], json.loads(call['function']['arguments'])
@@ -88,7 +85,7 @@ def monitor(robot, policy, instruction: str, max_decisions: int = 50, history_si
                     return 'episode_ended'
             result = {'steps': arguments['steps']}
         else:  # move: a correction by inverse kinematics, as in Direct.
-            path = move_path(robot, arguments)
+            path = robot.ik(arguments['pose'], arguments['gripper'])
             for action in path:
                 if robot.step(action):
                     return 'episode_ended'

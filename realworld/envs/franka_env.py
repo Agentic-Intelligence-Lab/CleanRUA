@@ -1,4 +1,17 @@
-"""Named Franka TCPs in a shared station frame. Site drivers plan and execute in each arm base."""
+"""Franka workstation ENV with named TCPs in one station frame.
+
+The local station JSON contains an arms object keyed by left and/or right, and a cameras
+object keyed by view name. Driver specs use {"driver": "module:Class", "args": {...}}.
+Each arm provides state() with measured pose [xyz, fixed-axis XYZ rpy], seven joints and
+gripper opening in [0,1], plus blocking move_pose(base_pose), set_gripper(opening) and stop().
+Set end_effector to "gripper". An external gripper can supply state/set_gripper/stop via tool.
+
+Motion requires workspace_m [[xmin,ymin,zmin],[xmax,ymax,zmax]] in the arm base frame,
+max_translation_m and max_rotation_rad. Dual arms each require station_T_base as [xyz,rpy];
+two targets per call require a coordinator driver implementing move_poses and stop. Drivers
+own trajectory planning and collision checks. Cameras can be OpenCV devices or RGB drivers
+with read()/close(). Optional camera_calibration entries carry intrinsics and camera_T_reference.
+"""
 from contextlib import ExitStack
 from importlib import import_module
 import math
@@ -7,7 +20,7 @@ import warnings
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from cleanrua_utils.motion import TrajectoryRejected
+from realworld.__main__ import TrajectoryRejected
 
 
 def _array(value, shape):
@@ -41,8 +54,11 @@ class _USBCamera:
         self.stream.release()
 
 
-class _InvalidTarget(ValueError):
+class _InvalidTarget(TrajectoryRejected):
     """Invalid command before dispatch; feedback failures propagate separately."""
+
+    def __init__(self, reason):
+        super().__init__({"reason": reason})
 
 
 class _Arm:

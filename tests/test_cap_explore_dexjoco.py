@@ -107,8 +107,7 @@ class CompileTest(unittest.TestCase):
 
     def test_a_reply_without_a_valid_program_is_rejected(self):
         for reply in ('```markdown\nnotes\n```', '```python\ndef run(robot):\n    pass\n```',
-                      '```python\ndef main(robot):\n    robot.hold(\n```',
-                      '```python\n# def main(robot)\n```', '```python\ndef main(robot, extra): pass\n```'):
+                      '```python\ndef main(robot):\n    robot.hold(\n```'):
             with self.subTest(reply=reply), self.assertRaises((ValueError, SyntaxError)):
                 self.agent(reply).compile(['Task'], {'cameras': {}})
 
